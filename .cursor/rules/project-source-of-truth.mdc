@@ -1,0 +1,24 @@
+---
+description: Project direction and architecture — always consult canonical docs before implementing or changing behavior
+alwaysApply: true
+---
+
+# Source of truth
+
+Before proposing or implementing product behavior, security boundaries, IPC shapes, storage, packages, wallet flows, or v1 scope:
+
+1. Read the relevant files under **`.cursor/source-of-truth/`** (canonical for this repo).
+2. Align changes with those documents. If code must diverge, update the matching markdown in the **same change** so docs and implementation stay aligned.
+
+| Topic | File |
+|-------|------|
+| Processes, trust boundaries, subsystems | `01-product-architecture.md` |
+| Custody, adapters, signing | `02-wallet-system.md` |
+| Local LLM, context, structured intents | `03-local-ai-system.md` |
+| Declarative packages, permissions | `04-package-system.md` |
+| Threat model, non-negotiables | `05-security-model.md` |
+| SQLite, encryption, paths | `06-data-storage.md` |
+| Preload, IPC, validation | `07-ipc-contracts.md` |
+| v1 in / out of scope | `08-v1-scope.md` |
+
+The repo may also contain a top-level `source-of-truth/` folder for human reference; prefer **`.cursor/source-of-truth/`** for agent work so scope and wording match the maintained set.
