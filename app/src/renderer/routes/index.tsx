@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { validateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +19,8 @@ import {
 import { useTheme } from "@/hooks/use-theme";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 import { useAiStore } from "@/stores/aiStore";
+import { useWalletStore } from "@/stores/walletStore";
+import { desktopPreviewMnemonic, isDestrallDesktop } from "@/lib/desktopWallet";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -44,6 +48,7 @@ function Asterisk({ className = "" }: { className?: string }) {
 type Step =
   | "choose"
   | "phrase"
+  | "confirm-phrase"
   | "import"
   | "password"
   | "confirm"
@@ -52,14 +57,12 @@ type Step =
 
 type Flow = "create" | "import";
 
-const STEP_ORDER: Step[] = ["phrase", "password", "confirm", "created"];
+const STEP_ORDER: Step[] = ["phrase", "confirm-phrase", "password", "confirm", "created"];
 const IMPORT_STEP_ORDER: Step[] = ["import", "password", "confirm", "created"];
 
-const SAMPLE_PHRASE = [
-  "harbor", "violet", "orbit", "candle",
-  "meadow", "syrup", "puzzle", "ember",
-  "lantern", "ribbon", "marble", "quartz",
-];
+function normalizeMnemonic(input: string): string {
+  return input.trim().split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
 
 const MODELS = [
   {
@@ -87,9 +90,14 @@ function Index() {
   const setAiSetupComplete = useOnboardingStore((s) => s.setAiModelSetupComplete);
   const aiMarkInstalled = useAiStore((s) => s.markInstalled);
   const aiSelect = useAiStore((s) => s.selectModel);
+  const createWallet = useWalletStore((s) => s.createWallet);
+  const importWallet = useWalletStore((s) => s.importWallet);
+
   const [step, setStep] = useState<Step>("choose");
   const [flow, setFlow] = useState<Flow>("create");
   const [seedInput, setSeedInput] = useState("");
+  const [creationMnemonic, setCreationMnemonic] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [password, setPassword] = useState("");
@@ -97,34 +105,66 @@ function Index() {
   const [confirm, setConfirm] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [pwdError, setPwdError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdAddress, setCreatedAddress] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<Record<string, boolean>>({});
+  const [confirmWordA, setConfirmWordA] = useState("");
+  const [confirmWordB, setConfirmWordB] = useState("");
 
-  const address = useMemo(
-    () =>
-      Array.from({ length: 44 }, () =>
-        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789".charAt(
-          Math.floor(Math.random() * 57),
-        ),
-      ).join(""),
-    [],
+  const creationWords = useMemo(
+    () => creationMnemonic?.split(/\s+/).filter(Boolean) ?? [],
+    [creationMnemonic],
   );
+  const normalizedImportSeed = useMemo(() => normalizeMnemonic(seedInput), [seedInput]);
+  const isValidImportMnemonic = useMemo(
+    () => normalizedImportSeed.length > 0 && validateMnemonic(normalizedImportSeed, wordlist),
+    [normalizedImportSeed],
+  );
+
+  const confirmIndexes = useMemo(() => {
+    if (creationWords.length < 12) return [2, 8] as const;
+    const first = 2;
+    const second = Math.min(creationWords.length - 1, 8);
+    return [first, second] as const;
+  }, [creationWords.length]);
+
+  useEffect(() => {
+    if (flow !== "create" || creationMnemonic != null || previewError) return;
+    void (async () => {
+      try {
+        if (!isDestrallDesktop()) {
+          setPreviewError("Open wallet setup inside the Destrall desktop app.");
+          return;
+        }
+        const mnemonic = await desktopPreviewMnemonic();
+        setCreationMnemonic(mnemonic);
+      } catch (error) {
+        setPreviewError(error instanceof Error ? error.message : "Could not start wallet setup");
+      }
+    })();
+  }, [creationMnemonic, flow, previewError]);
 
   const activeOrder = flow === "import" ? IMPORT_STEP_ORDER : STEP_ORDER;
   const stepIndex = activeOrder.indexOf(step as (typeof activeOrder)[number]);
 
   const goBack = () => {
+    setSubmitError(null);
     if (step === "phrase" || step === "import") setStep("choose");
-    else if (step === "password") setStep(flow === "import" ? "import" : "phrase");
+    else if (step === "confirm-phrase") setStep("phrase");
+    else if (step === "password") setStep(flow === "import" ? "import" : "confirm-phrase");
     else if (step === "confirm") setStep("password");
     else if (step === "created") setStep("confirm");
     else if (step === "model") setStep("created");
   };
 
   const copyPhrase = async () => {
+    const text = flow === "import" ? normalizedImportSeed : creationMnemonic ?? "";
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(SAMPLE_PHRASE.join(" "));
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -141,14 +181,50 @@ function Index() {
     setStep("confirm");
   };
 
+  const commitWallet = async () => {
+    setSubmitError(null);
+    setIsSubmitting(true);
+    try {
+      if (!isDestrallDesktop()) {
+        throw new Error("Wallet setup requires the Destrall desktop app.");
+      }
+      if (flow === "import") {
+        if (!isValidImportMnemonic) {
+          throw new Error("Enter a valid BIP-39 recovery phrase.");
+        }
+        const account = await importWallet({
+          mnemonic: normalizedImportSeed,
+          password,
+        });
+        setCreatedAddress(account.address);
+      } else {
+        if (!creationMnemonic) throw new Error("Recovery phrase not ready");
+        const account = await createWallet({
+          mnemonic: creationMnemonic,
+          password,
+        });
+        setCreatedAddress(account.address);
+      }
+      setCreationMnemonic(null);
+      setSeedInput("");
+      setPassword("");
+      setConfirm("");
+      setWalletSetupComplete(true);
+      setStep("created");
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Wallet setup failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const submitConfirm = () => {
     if (confirm !== password) {
       setPwdError(t("onboarding.passwordsDoNotMatch"));
       return;
     }
     setPwdError(null);
-    setWalletSetupComplete(true);
-    setStep("created");
+    void commitWallet();
   };
 
   const startDownload = (id: string) => {
@@ -168,6 +244,10 @@ function Index() {
     navigate({ to: "/home" });
   };
 
+  const phraseConfirmed =
+    confirmWordA.trim().toLowerCase() === creationWords[confirmIndexes[0]]?.toLowerCase() &&
+    confirmWordB.trim().toLowerCase() === creationWords[confirmIndexes[1]]?.toLowerCase();
+
   return (
     <main className="min-h-screen w-full flex items-center justify-center bg-background px-4 py-10 relative">
       <button
@@ -182,122 +262,288 @@ function Index() {
         className="w-full max-w-5xl rounded-3xl bg-card overflow-hidden grid md:grid-cols-2"
         style={{ boxShadow: "var(--shadow-card)" }}
       >
-        {/* Left panel */}
-        <div
-          className="relative hidden md:flex flex-col justify-between p-8 m-3 rounded-2xl text-white min-h-[560px]"
-          style={{ background: "var(--gradient-brand)" }}
-        >
-          <Asterisk className="w-8 h-8 text-white" />
-          <div className="space-y-2">
-            <p className="text-sm/relaxed opacity-90">You can easily</p>
-            <h2 className="text-2xl font-semibold leading-snug max-w-[18rem]">
-              Get access your personal hub for clarity and productivity
-            </h2>
-          </div>
-          <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 pointer-events-none" />
-        </div>
-
-        {/* Right panel */}
-        <div className="p-8 sm:p-12 flex flex-col justify-center min-h-[560px]">
-          {step === "choose" && (
-            <ChooseStep
-              onCreate={() => {
-                setFlow("create");
-                setStep("phrase");
-              }}
-              onImport={() => {
-                setFlow("import");
-                setStep("import");
-              }}
-            />
-          )}
-
-          {step !== "choose" && step !== "model" && (
-            <div className="flex items-center gap-3 mb-8">
-              <button
-                type="button"
-                onClick={goBack}
-                aria-label={t("common.back")}
-                className="text-muted-foreground hover:text-foreground transition shrink-0"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="flex items-center gap-2 flex-1">
-                {activeOrder.map((s, i) => (
-                  <div
-                    key={s}
-                    className={`h-1.5 flex-1 rounded-full transition-colors ${
-                      i <= stepIndex ? "bg-brand" : "bg-secondary"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === "phrase" && (
-            <PhraseStep
-              revealed={revealed}
-              setRevealed={setRevealed}
-              copied={copied}
-              onCopy={copyPhrase}
-              onContinue={() => setStep("password")}
-            />
-          )}
-
-          {step === "import" && (
-            <ImportStep
-              value={seedInput}
-              onChange={setSeedInput}
-              onContinue={() => setStep("password")}
-            />
-          )}
-
-          {step === "password" && (
-            <PasswordStep
-              value={password}
-              onChange={setPassword}
-              show={showPwd}
-              setShow={setShowPwd}
-              error={pwdError}
-              onContinue={submitPassword}
-            />
-          )}
-
-          {step === "confirm" && (
-            <ConfirmStep
-              value={confirm}
-              onChange={setConfirm}
-              show={showConfirm}
-              setShow={setShowConfirm}
-              error={pwdError}
-              onContinue={submitConfirm}
-              ctaLabel={flow === "import" ? t("onboarding.importSeedPhrase") : t("onboarding.createWallet")}
-            />
-          )}
-
-          {step === "created" && (
-            <CreatedStep
-              address={address}
-              flow={flow}
-              onContinue={() => setStep("model")}
-            />
-          )}
-
-          {step === "model" && (
-            <ModelStep
-              selected={selectedModel}
-              downloading={downloading}
-              downloaded={downloaded}
-              onDownload={startDownload}
-              onSelect={setSelectedModel}
-              onContinue={finish}
-              onBack={() => setStep("created")}
-            />
-          )}
-        </div>
+        <LeftPanel />
+        <RightPanel
+          step={step}
+          flow={flow}
+          activeOrder={activeOrder}
+          stepIndex={stepIndex}
+          goBack={goBack}
+          setFlow={setFlow}
+          setStep={setStep}
+          revealed={revealed}
+          setRevealed={setRevealed}
+          copied={copied}
+          copyPhrase={copyPhrase}
+          creationWords={creationWords}
+          previewError={previewError}
+          confirmIndexes={confirmIndexes}
+          confirmWordA={confirmWordA}
+          setConfirmWordA={setConfirmWordA}
+          confirmWordB={confirmWordB}
+          setConfirmWordB={setConfirmWordB}
+          phraseConfirmed={phraseConfirmed}
+          seedInput={seedInput}
+          setSeedInput={setSeedInput}
+          isValidImportMnemonic={isValidImportMnemonic}
+          password={password}
+          setPassword={setPassword}
+          showPwd={showPwd}
+          setShowPwd={setShowPwd}
+          pwdError={pwdError}
+          submitPassword={submitPassword}
+          confirm={confirm}
+          setConfirm={setConfirm}
+          showConfirm={showConfirm}
+          setShowConfirm={setShowConfirm}
+          submitConfirm={submitConfirm}
+          submitError={submitError}
+          isSubmitting={isSubmitting}
+          createdAddress={createdAddress}
+          selectedModel={selectedModel}
+          downloading={downloading}
+          downloaded={downloaded}
+          startDownload={startDownload}
+          setSelectedModel={setSelectedModel}
+          finish={finish}
+          t={t}
+        />
       </div>
     </main>
+  );
+}
+
+function LeftPanel() {
+  return (
+    <div
+      className="relative hidden md:flex flex-col justify-between p-8 m-3 rounded-2xl text-white min-h-[560px]"
+      style={{ background: "var(--gradient-brand)" }}
+    >
+      <Asterisk className="w-8 h-8 text-white" />
+      <div className="space-y-2">
+        <p className="text-sm/relaxed opacity-90">You can easily</p>
+        <h2 className="text-2xl font-semibold leading-snug max-w-[18rem]">
+          Get access your personal hub for clarity and productivity
+        </h2>
+      </div>
+      <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 pointer-events-none" />
+    </div>
+  );
+}
+
+type RightPanelProps = {
+  step: Step;
+  flow: Flow;
+  activeOrder: Step[];
+  stepIndex: number;
+  goBack: () => void;
+  setFlow: (flow: Flow) => void;
+  setStep: (step: Step) => void;
+  revealed: boolean;
+  setRevealed: (value: boolean) => void;
+  copied: boolean;
+  copyPhrase: () => void;
+  creationWords: string[];
+  previewError: string | null;
+  confirmIndexes: readonly [number, number];
+  confirmWordA: string;
+  setConfirmWordA: (value: string) => void;
+  confirmWordB: string;
+  setConfirmWordB: (value: string) => void;
+  phraseConfirmed: boolean;
+  seedInput: string;
+  setSeedInput: (value: string) => void;
+  isValidImportMnemonic: boolean;
+  password: string;
+  setPassword: (value: string) => void;
+  showPwd: boolean;
+  setShowPwd: (value: boolean) => void;
+  pwdError: string | null;
+  submitPassword: () => void;
+  confirm: string;
+  setConfirm: (value: string) => void;
+  showConfirm: boolean;
+  setShowConfirm: (value: boolean) => void;
+  submitConfirm: () => void;
+  submitError: string | null;
+  isSubmitting: boolean;
+  createdAddress: string | null;
+  selectedModel: string | null;
+  downloading: string | null;
+  downloaded: Record<string, boolean>;
+  startDownload: (id: string) => void;
+  setSelectedModel: (id: string) => void;
+  finish: () => void;
+  t: ReturnType<typeof useTranslation>["t"];
+};
+
+function RightPanel(props: RightPanelProps) {
+  const {
+    step,
+    flow,
+    activeOrder,
+    stepIndex,
+    goBack,
+    setFlow,
+    setStep,
+    revealed,
+    setRevealed,
+    copied,
+    copyPhrase,
+    creationWords,
+    previewError,
+    confirmIndexes,
+    confirmWordA,
+    setConfirmWordA,
+    confirmWordB,
+    setConfirmWordB,
+    phraseConfirmed,
+    seedInput,
+    setSeedInput,
+    isValidImportMnemonic,
+    password,
+    setPassword,
+    showPwd,
+    setShowPwd,
+    pwdError,
+    submitPassword,
+    confirm,
+    setConfirm,
+    showConfirm,
+    setShowConfirm,
+    submitConfirm,
+    submitError,
+    isSubmitting,
+    createdAddress,
+    selectedModel,
+    downloading,
+    downloaded,
+    startDownload,
+    setSelectedModel,
+    finish,
+    t,
+  } = props;
+
+  return (
+    <div className="p-8 sm:p-12 flex flex-col justify-center min-h-[560px]">
+      {step === "choose" && (
+        <ChooseStep
+          onCreate={() => {
+            setFlow("create");
+            setStep("phrase");
+          }}
+          onImport={() => {
+            setFlow("import");
+            setStep("import");
+          }}
+        />
+      )}
+
+      {step !== "choose" && step !== "model" && (
+        <div className="flex items-center gap-3 mb-8">
+          <button
+            type="button"
+            onClick={goBack}
+            aria-label={t("common.back")}
+            className="text-muted-foreground hover:text-foreground transition shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <StepBar activeOrder={activeOrder} stepIndex={stepIndex} />
+        </div>
+      )}
+
+      {step === "phrase" && (
+        <PhraseStep
+          revealed={revealed}
+          setRevealed={setRevealed}
+          copied={copied}
+          onCopy={copyPhrase}
+          words={creationWords}
+          previewError={previewError}
+          onContinue={() => setStep("confirm-phrase")}
+        />
+      )}
+
+      {step === "confirm-phrase" && (
+        <ConfirmPhraseStep
+          indexes={confirmIndexes}
+          confirmWordA={confirmWordA}
+          setConfirmWordA={setConfirmWordA}
+          confirmWordB={confirmWordB}
+          setConfirmWordB={setConfirmWordB}
+          onContinue={() => setStep("password")}
+          canContinue={phraseConfirmed}
+        />
+      )}
+
+      {step === "import" && (
+        <ImportStep
+          value={seedInput}
+          onChange={setSeedInput}
+          onContinue={() => setStep("password")}
+          isValid={isValidImportMnemonic}
+        />
+      )}
+
+      {step === "password" && (
+        <PasswordStep
+          value={password}
+          onChange={setPassword}
+          show={showPwd}
+          setShow={setShowPwd}
+          error={pwdError}
+          onContinue={submitPassword}
+        />
+      )}
+
+      {step === "confirm" && (
+        <ConfirmStep
+          value={confirm}
+          onChange={setConfirm}
+          show={showConfirm}
+          setShow={setShowConfirm}
+          error={pwdError ?? submitError}
+          onContinue={submitConfirm}
+          ctaLabel={flow === "import" ? t("onboarding.importSeedPhrase") : t("onboarding.createWallet")}
+          disabled={isSubmitting}
+        />
+      )}
+
+      {step === "created" && (
+        <CreatedStep
+          address={createdAddress ?? ""}
+          onContinue={() => setStep("model")}
+        />
+      )}
+
+      {step === "model" && (
+        <ModelStep
+          selected={selectedModel}
+          downloading={downloading}
+          downloaded={downloaded}
+          onDownload={startDownload}
+          onSelect={setSelectedModel}
+          onContinue={finish}
+          onBack={() => setStep("created")}
+        />
+      )}
+    </div>
+  );
+}
+
+function StepBar({ activeOrder, stepIndex }: { activeOrder: Step[]; stepIndex: number }) {
+  return (
+    <div className="flex items-center gap-2 flex-1">
+      {activeOrder.map((s, i) => (
+        <div
+          key={s}
+          className={`h-1.5 flex-1 rounded-full transition-colors ${
+            i <= stepIndex ? "bg-brand" : "bg-secondary"
+          }`}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -374,12 +620,16 @@ function PhraseStep({
   copied,
   onCopy,
   onContinue,
+  words,
+  previewError,
 }: {
   revealed: boolean;
   setRevealed: (v: boolean) => void;
   copied: boolean;
   onCopy: () => void;
   onContinue: () => void;
+  words: string[];
+  previewError: string | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -390,6 +640,8 @@ function PhraseStep({
       <p className="mt-2 text-sm text-muted-foreground max-w-sm">
         {t("onboarding.writeItDown")}
       </p>
+
+      {previewError && <p className="mt-4 text-sm text-destructive">{previewError}</p>}
 
       <div className="mt-6 rounded-2xl border border-border bg-background dark:bg-background/50 p-4">
         <div className="flex items-center justify-between mb-3">
@@ -410,17 +662,7 @@ function PhraseStep({
             {copied ? t("common.copied") : t("common.copy")}
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {SAMPLE_PHRASE.map((word, i) => (
-            <div
-              key={i}
-              className="rounded-lg bg-secondary/60 px-3 py-2 text-sm text-foreground/90"
-            >
-              <span className="text-muted-foreground mr-1">{i + 1}.</span>
-              {revealed ? word : "••••"}
-            </div>
-          ))}
-        </div>
+        <PhraseGrid revealed={revealed} words={words} />
       </div>
 
       <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">
@@ -428,8 +670,77 @@ function PhraseStep({
         <p>{t("onboarding.writeItDown")}</p>
       </div>
 
-      <PrimaryButton onClick={onContinue}>
+      <PrimaryButton onClick={onContinue} disabled={words.length < 12 || !!previewError}>
         {t("onboarding.iSavedIt")} <ArrowRight className="w-4 h-4" />
+      </PrimaryButton>
+    </>
+  );
+}
+
+function PhraseGrid({ revealed, words }: { revealed: boolean; words: string[] }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {words.map((word, i) => (
+        <PhraseCell key={i} index={i} revealed={revealed} word={word} />
+      ))}
+    </div>
+  );
+}
+
+function PhraseCell({
+  index,
+  revealed,
+  word,
+}: {
+  index: number;
+  revealed: boolean;
+  word: string;
+}) {
+  return (
+    <div className="rounded-lg bg-secondary/60 px-3 py-2 text-sm text-foreground/90">
+      <span className="text-muted-foreground mr-1">{index + 1}.</span>
+      {revealed ? word : "••••"}
+    </div>
+  );
+}
+
+function ConfirmPhraseStep({
+  indexes,
+  confirmWordA,
+  setConfirmWordA,
+  confirmWordB,
+  setConfirmWordB,
+  onContinue,
+  canContinue,
+}: {
+  indexes: readonly [number, number];
+  confirmWordA: string;
+  setConfirmWordA: (value: string) => void;
+  confirmWordB: string;
+  setConfirmWordB: (value: string) => void;
+  onContinue: () => void;
+  canContinue: boolean;
+}) {
+  return (
+    <>
+      <h1 className="text-3xl font-bold tracking-tight text-foreground">Confirm recovery phrase</h1>
+      <p className="mt-2 text-sm text-muted-foreground max-w-sm">
+        Enter words {indexes[0] + 1} and {indexes[1] + 1} from your recovery phrase.
+      </p>
+      <input
+        value={confirmWordA}
+        onChange={(e) => setConfirmWordA(e.target.value)}
+        placeholder={`Word ${indexes[0] + 1}`}
+        className="mt-6 w-full rounded-full border border-border bg-background px-5 py-3.5"
+      />
+      <input
+        value={confirmWordB}
+        onChange={(e) => setConfirmWordB(e.target.value)}
+        placeholder={`Word ${indexes[1] + 1}`}
+        className="mt-3 w-full rounded-full border border-border bg-background px-5 py-3.5"
+      />
+      <PrimaryButton onClick={onContinue} disabled={!canContinue}>
+        Continue <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>
   );
@@ -520,6 +831,7 @@ function ConfirmStep({
   error,
   onContinue,
   ctaLabel,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -528,6 +840,7 @@ function ConfirmStep({
   error: string | null;
   onContinue: () => void;
   ctaLabel?: string;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -547,7 +860,7 @@ function ConfirmStep({
         autoFocus
       />
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-      <PrimaryButton onClick={onContinue} disabled={value.length === 0}>
+      <PrimaryButton onClick={onContinue} disabled={value.length === 0 || disabled}>
         {ctaLabel ?? t("onboarding.createWallet")}
       </PrimaryButton>
     </>
@@ -558,15 +871,14 @@ function ImportStep({
   value,
   onChange,
   onContinue,
+  isValid,
 }: {
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
+  isValid: boolean;
 }) {
   const { t } = useTranslation();
-  const normalized = value.trim().replace(/\s+/g, " ");
-  const wordCount = normalized ? normalized.split(" ").length : 0;
-  const valid = [12, 15, 18, 21, 24].includes(wordCount);
   return (
     <>
       <h1 className="text-3xl font-bold tracking-tight text-foreground">
@@ -583,14 +895,14 @@ function ImportStep({
         autoFocus
         className="mt-6 w-full rounded-2xl border border-border bg-background dark:bg-background/50 px-5 py-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 transition resize-none"
       />
-      <PrimaryButton onClick={onContinue} disabled={!valid}>
+      <PrimaryButton onClick={onContinue} disabled={!isValid}>
         {t("common.continue")} <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>
   );
 }
 
-function CreatedStep({ address, flow, onContinue }: { address: string; flow: Flow; onContinue: () => void }) {
+function CreatedStep({ address, onContinue }: { address: string; onContinue: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center text-center">

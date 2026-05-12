@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Lock } from "lucide-react";
+import { useWalletStore } from "@/stores/walletStore";
 
 export const Route = createFileRoute("/lock")({
   component: LockPage,
@@ -14,12 +15,24 @@ export const Route = createFileRoute("/lock")({
 
 function LockPage() {
   const navigate = useNavigate();
+  const unlockWallet = useWalletStore((s) => s.unlockWallet);
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password.trim()) return;
-    navigate({ to: "/home" });
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await unlockWallet(password);
+      navigate({ to: "/home" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not unlock wallet");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -45,12 +58,14 @@ function LockPage() {
           className="w-full rounded-2xl border border-brand/40 bg-card/60 px-5 py-4 text-center text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 transition mb-4"
         />
 
+        {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+
         <button
           type="submit"
-          disabled={!password.trim()}
+          disabled={!password.trim() || isSubmitting}
           className="w-full rounded-2xl bg-brand text-brand-foreground font-semibold py-4 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          Unlock
+          {isSubmitting ? "Unlocking…" : "Unlock"}
         </button>
       </form>
     </main>

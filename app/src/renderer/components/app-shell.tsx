@@ -15,11 +15,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  useAccountsStore,
-  colorClass,
-  getInitial,
-} from "@/stores/accountsStore";
+import { colorClass, getInitial } from "@/stores/accountsStore";
+import { useWalletStore } from "@/stores/walletStore";
 
 type NavKey = "home" | "assistant" | "store" | "settings" | "developer";
 
@@ -51,21 +48,31 @@ export function AppShell({
   const { theme, toggle } = useTheme();
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
-  const accounts = useAccountsStore((s) => s.accounts);
-  const activeAccountId = useAccountsStore((s) => s.activeAccountId);
-  const setActive = useAccountsStore((s) => s.setActive);
-  const addAccount = useAccountsStore((s) => s.addAccount);
+  const accounts = useWalletStore((s) => s.accounts);
+  const activeAccountId = useWalletStore((s) => s.activeAccountId);
+  const switchAccount = useWalletStore((s) => s.switchAccount);
+  const createAccount = useWalletStore((s) => s.createAccount);
   const activeAccount =
     accounts.find((a) => a.id === activeAccountId) ?? accounts[0];
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newName, setNewName] = useState("");
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
-  const createAccount = () => {
+  const handleCreateAccount = async () => {
     const name = newName.trim();
     if (!name) return;
-    addAccount(name);
-    setNewName("");
-    setShowNewAccount(false);
+    setAccountError(null);
+    setIsCreatingAccount(true);
+    try {
+      await createAccount(name);
+      setNewName("");
+      setShowNewAccount(false);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Could not create account");
+    } finally {
+      setIsCreatingAccount(false);
+    }
   };
 
   return (
@@ -143,13 +150,13 @@ export function AppShell({
                   >
                     <button
                       type="button"
-                      onClick={() => setActive(acc.id)}
+                      onClick={() => void switchAccount(acc.id)}
                       className="flex-1 min-w-0 flex items-center gap-3"
                     >
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(acc.color)}`}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(acc.color ?? "brand")}`}
                       >
-                        {getInitial(acc)}
+                        {getInitial({ name: acc.name, icon: acc.icon ?? "" })}
                       </span>
                       <span className="text-sm font-medium truncate">
                         {acc.name}
@@ -158,7 +165,7 @@ export function AppShell({
                     <Link
                       to="/account/$accountId"
                       params={{ accountId: acc.id }}
-                      onClick={() => setActive(acc.id)}
+                      onClick={() => void switchAccount(acc.id)}
                       aria-label={`${acc.name} settings`}
                       className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary/60"
                     >
@@ -171,7 +178,7 @@ export function AppShell({
           </div>
         )}
 
-        {collapsed && (
+        {collapsed && activeAccount && (
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
@@ -182,9 +189,9 @@ export function AppShell({
               <Plus className="w-4 h-4" />
             </button>
             <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(activeAccount.color)}`}
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(activeAccount.color ?? "brand")}`}
             >
-              {getInitial(activeAccount)}
+              {getInitial({ name: activeAccount.name, icon: activeAccount.icon ?? "" })}
             </div>
           </div>
         )}
@@ -215,18 +222,20 @@ export function AppShell({
           </nav>
 
           <div className="flex items-center gap-2">
+          {activeAccount && (
             <Link
               to="/account/$accountId"
               params={{ accountId: activeAccount.id }}
               className="flex items-center gap-2 rounded-full border border-border bg-secondary/40 px-3 py-1.5 text-sm hover:bg-secondary transition"
             >
               <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(activeAccount.color)}`}
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${colorClass(activeAccount.color ?? "brand")}`}
               >
-                {getInitial(activeAccount)}
+                {getInitial({ name: activeAccount.name, icon: activeAccount.icon ?? "" })}
               </span>
               <span className="font-medium">{activeAccount.name}</span>
             </Link>
+          )}
             <button
               type="button"
               onClick={toggle}
@@ -277,10 +286,11 @@ export function AppShell({
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && createAccount()}
+              onKeyDown={(e) => e.key === "Enter" && void handleCreateAccount()}
               placeholder={`Account ${accounts.length + 1}`}
               className="w-full rounded-full border border-border bg-background dark:bg-background/50 px-5 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 transition"
             />
+            {accountError && <p className="mt-3 text-sm text-destructive">{accountError}</p>}
             <div className="mt-6 flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -291,11 +301,11 @@ export function AppShell({
               </button>
               <button
                 type="button"
-                onClick={createAccount}
-                disabled={!newName.trim()}
+                onClick={() => void handleCreateAccount()}
+                disabled={!newName.trim() || isCreatingAccount}
                 className="px-5 py-2 rounded-full bg-brand text-brand-foreground text-sm font-semibold hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
-                {t("nav.create")}
+                {isCreatingAccount ? "Creating…" : t("nav.create")}
               </button>
             </div>
           </div>

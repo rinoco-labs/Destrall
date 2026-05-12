@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -33,6 +33,17 @@ import {
   type AppCurrency,
   type AiPersonality,
 } from "@/stores/settingsStore";
+import { useWalletStore } from "@/stores/walletStore";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -82,8 +93,14 @@ type ModalKind = null | "language" | "currency" | "autoLock" | "aiModel" | "pers
 
 function SettingsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [openModal, setOpenModal] = useState<ModalKind>(null);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const lockWallet = useWalletStore((s) => s.lockWallet);
+  const disconnectWallet = useWalletStore((s) => s.disconnectWallet);
 
   const language = useSettingsStore((s) => s.language);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -102,6 +119,30 @@ function SettingsPage() {
   const aiModelLabel = AI_MODELS.find((m) => m.id === aiModel)?.name ?? aiModel;
   const personalityLabel =
     AI_PERSONALITIES.find((p) => p.id === aiPersonality)?.name ?? aiPersonality;
+
+  const handleLock = async () => {
+    await lockWallet();
+    navigate({ to: "/lock" });
+  };
+
+  const handleLogOut = async () => {
+    setLogoutError(null);
+    setIsLoggingOut(true);
+    try {
+      await disconnectWallet();
+      setLogoutConfirmOpen(false);
+      navigate({ to: "/" });
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Could not log out");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const openLogoutConfirm = () => {
+    setLogoutError(null);
+    setLogoutConfirmOpen(true);
+  };
 
   return (
     <AppShell active="settings">
@@ -184,6 +225,7 @@ function SettingsPage() {
             icon={ShieldCheck}
             label={t("settings.lockAppNow")}
             highlight
+            onClick={() => void handleLock()}
           />
         </div>
 
@@ -207,15 +249,57 @@ function SettingsPage() {
         </div>
 
         <div className="mt-10 mb-12">
-          <Link
-            to="/lock"
-            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive font-semibold py-4 hover:bg-destructive/20 transition"
+          <button
+            type="button"
+            onClick={openLogoutConfirm}
+            disabled={isLoggingOut}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive font-semibold py-4 hover:bg-destructive/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LogOut className="w-5 h-5" />
             {t("settings.logOut")}
-          </Link>
+          </button>
         </div>
       </div>
+
+      <AlertDialog
+        open={logoutConfirmOpen}
+        onOpenChange={(open) => {
+          if (!isLoggingOut) {
+            setLogoutConfirmOpen(open);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("settings.logOutConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-left text-sm text-muted-foreground">
+                <p>{t("settings.logOutConfirmDescription")}</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>{t("settings.logOutConfirmEncryptedVault")}</li>
+                  <li>{t("settings.logOutConfirmAccounts")}</li>
+                  <li>{t("settings.logOutConfirmOnboarding")}</li>
+                </ul>
+                <p>{t("settings.logOutConfirmRecoveryWarning")}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {logoutError && <p className="text-sm text-destructive">{logoutError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoggingOut}>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isLoggingOut}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleLogOut();
+              }}
+            >
+              {isLoggingOut ? t("settings.logOutInProgress") : t("settings.logOutConfirmAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modals */}
       <SelectModal<AppLanguage>

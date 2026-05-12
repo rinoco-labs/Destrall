@@ -11,23 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-// Demo seed phrase. In a real wallet, this would be decrypted from secure
-// storage using the wallet password — never persisted in plaintext.
-const DEMO_SEED = [
-  "month",
-  "shrimp",
-  "budget",
-  "whisper",
-  "behind",
-  "earth",
-  "gadget",
-  "year",
-  "april",
-  "toddler",
-  "hair",
-  "fluid",
-];
+import { desktopViewSeedPhrase, isDestrallDesktop } from "@/lib/desktopWallet";
 
 type Props = {
   open: boolean;
@@ -41,34 +25,51 @@ export function RecoveryPhraseModal({ open, onOpenChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [words, setWords] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      // reset on close
       setTimeout(() => {
         setStep("password");
         setPassword("");
         setError(null);
         setRevealed(false);
         setCopied(false);
+        setWords([]);
+        setIsSubmitting(false);
       }, 150);
     }
   }, [open]);
 
-  const handleConfirm = (e: React.FormEvent) => {
+  const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.trim().length < 8) {
       setError(t("onboarding.passwordTooShort"));
       return;
     }
-    // Demo: accept any 8+ char password. Real impl would verify against KDF.
+    if (!isDestrallDesktop()) {
+      setError("Recovery phrase is only available in the Destrall desktop app.");
+      return;
+    }
+
     setError(null);
-    setStep("phrase");
+    setIsSubmitting(true);
+    try {
+      const mnemonic = await desktopViewSeedPhrase(password);
+      setWords(mnemonic.split(/\s+/).filter(Boolean));
+      setStep("phrase");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reveal recovery phrase");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCopy = async () => {
+    if (!words.length) return;
     try {
-      await navigator.clipboard.writeText(DEMO_SEED.join(" "));
+      await navigator.clipboard.writeText(words.join(" "));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -78,98 +79,89 @@ export function RecoveryPhraseModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card/95 backdrop-blur border-border max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("settings.recoveryPhrase")}</DialogTitle>
           <DialogDescription>
             {step === "password"
-              ? "Enter the wallet password you set when you created or imported this wallet. This is separate from the app lock password."
-              : "Write these words down and keep them safe. Never share them."}
+              ? t(
+                  "settings.recoveryPhrasePasswordHint",
+                  "Enter your wallet password to view your recovery phrase.",
+                )
+              : t(
+                  "settings.recoveryPhraseRevealHint",
+                  "Write these words down and store them offline.",
+                )}
           </DialogDescription>
         </DialogHeader>
 
         {step === "password" ? (
-          <form onSubmit={handleConfirm} className="mt-2 space-y-4">
+          <form onSubmit={handleConfirm} className="space-y-4">
             <Input
               type="password"
-              autoFocus
-              placeholder="Wallet password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-12 bg-background/60"
+              placeholder="••••••••"
+              autoFocus
             />
-            {error && (
-              <p className="text-xs text-destructive flex items-center gap-1.5">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                {error}
-              </p>
-            )}
-            <Button
-              type="submit"
-              className="w-full h-12 bg-brand/20 hover:bg-brand/30 text-foreground border border-brand/40"
-            >
-              {t("common.continue", "Confirm")}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Verifying…" : t("common.continue")}
             </Button>
           </form>
         ) : (
-          <div className="mt-2 space-y-4">
-            <div className="relative rounded-2xl border border-border bg-background/40 p-4">
-              <div
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setRevealed((value) => !value)}
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
+              >
+                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {revealed ? t("onboarding.hide") : t("onboarding.reveal")}
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
                 className={cn(
-                  "grid grid-cols-3 gap-2 transition",
-                  !revealed && "blur-md select-none pointer-events-none",
+                  "inline-flex items-center gap-2 text-sm transition",
+                  copied ? "text-emerald-400" : "text-brand hover:opacity-80",
                 )}
               >
-                {DEMO_SEED.map((word, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 rounded-lg bg-secondary/50 border border-border px-3 py-2"
-                  >
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {i + 1}.
-                    </span>
-                    <span className="text-sm font-medium text-foreground">
-                      {word}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {!revealed && (
-                <button
-                  type="button"
-                  onClick={() => setRevealed(true)}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition"
-                >
-                  <EyeOff className="w-6 h-6" />
-                  <span className="text-sm">{t("onboarding.reveal", "Tap to reveal")}</span>
-                </button>
-              )}
+                <Copy className="w-4 h-4" />
+                {copied ? t("common.copied") : t("common.copy")}
+              </button>
             </div>
-
-            {revealed && (
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setRevealed(false)}
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  {t("onboarding.hide", "Hide")}
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1 bg-brand/20 hover:bg-brand/30 text-foreground border border-brand/40"
-                  onClick={handleCopy}
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  {copied ? t("common.copied") : t("common.copy")}
-                </Button>
-              </div>
-            )}
+            <PhraseGrid revealed={revealed} words={words} />
+            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">
+              <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+              <p>{t("onboarding.writeItDown")}</p>
+            </div>
           </div>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PhraseGrid({
+  revealed,
+  words,
+}: {
+  revealed: boolean;
+  words: string[];
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {words.map((word, index) => (
+        <div
+          key={`${index}-${word}`}
+          className="rounded-lg bg-secondary/60 px-3 py-2 text-sm text-foreground/90"
+        >
+          <span className="text-muted-foreground mr-1">{index + 1}.</span>
+          {revealed ? word : "••••"}
+        </div>
+      ))}
+    </div>
   );
 }

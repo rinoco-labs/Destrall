@@ -8,6 +8,7 @@ import {
 
 import "@/i18n";
 import { AppProviders } from "@/components/app-providers";
+import { WalletGate } from "@/components/wallet-gate";
 
 function NotFoundComponent() {
   return (
@@ -78,7 +79,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppProviders />
-      <Outlet />
+      <WalletGate>
+        <Outlet />
+      </WalletGate>
     </QueryClientProvider>
   );
 }
