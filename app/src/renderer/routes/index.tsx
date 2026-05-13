@@ -11,13 +11,20 @@ import {
   Download,
   Eye,
   EyeOff,
+  Languages,
   Moon,
   PlusCircle,
   Sun,
   TriangleAlert,
 } from "lucide-react";
+import { SelectModal } from "@/components/settings/SelectModal";
 import { useTheme } from "@/hooks/use-theme";
 import { useOnboardingStore } from "@/stores/onboardingStore";
+import {
+  useSettingsStore,
+  SUPPORTED_LANGUAGES,
+  type AppLanguage,
+} from "@/stores/settingsStore";
 import { useAiStore } from "@/stores/aiStore";
 import { useWalletStore } from "@/stores/walletStore";
 import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
@@ -110,6 +117,9 @@ function Index() {
   const [downloaded, setDownloaded] = useState<Record<string, boolean>>({});
   const [confirmWordA, setConfirmWordA] = useState("");
   const [confirmWordB, setConfirmWordB] = useState("");
+  const [languageModalOpen, setLanguageModalOpen] = useState(false);
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
 
   const creationWords = useMemo(
     () => creationMnemonic?.split(/\s+/).filter(Boolean) ?? [],
@@ -247,14 +257,37 @@ function Index() {
 
   return (
     <main className="min-h-screen w-full flex items-center justify-center bg-background px-4 py-10 relative">
-      <button
-        type="button"
-        onClick={toggleTheme}
-        aria-label={t("settings.theme")}
-        className="absolute top-5 right-5 z-10 inline-flex items-center justify-center rounded-full border border-border bg-card/70 backdrop-blur w-10 h-10 text-foreground hover:bg-card transition shadow-sm"
-      >
-        {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-      </button>
+      <div className="absolute top-5 right-5 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setLanguageModalOpen(true)}
+          aria-label={t("settings.language")}
+          className="inline-flex items-center justify-center rounded-full border border-border bg-card/70 backdrop-blur w-10 h-10 text-foreground hover:bg-card transition shadow-sm"
+        >
+          <Languages className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={t("settings.theme")}
+          className="inline-flex items-center justify-center rounded-full border border-border bg-card/70 backdrop-blur w-10 h-10 text-foreground hover:bg-card transition shadow-sm"
+        >
+          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+      </div>
+      <SelectModal<AppLanguage>
+        open={languageModalOpen}
+        onOpenChange={setLanguageModalOpen}
+        title={t("settings.language")}
+        description={t("settings.chooseLanguage", "Choose your preferred language.")}
+        value={language}
+        options={SUPPORTED_LANGUAGES.map((l) => ({
+          value: l.code,
+          label: l.native,
+          description: l.label,
+        }))}
+        onSelect={setLanguage}
+      />
       <div
         className="w-full max-w-5xl rounded-3xl bg-card overflow-hidden grid md:grid-cols-2"
         style={{ boxShadow: "var(--shadow-card)" }}
