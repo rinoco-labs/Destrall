@@ -37,6 +37,7 @@ SQLite holds **small, structured** rows:
 ## Assistant Memory / Context Storage
 
 - Conversation history in SQLite (or chunked) with **user-visible delete**.
+- Assistant message rows may include a **`metadata` JSON field** (versioned envelope) for **structured UI blocks** (portfolio cards, proposals, etc.) so rich content survives reloads alongside `content` text.
 - Treat as **sensitive user data** at rest; consider encryption at rest for DB if threat model requires (product decision).
 
 ## Transaction / Activity Cache
