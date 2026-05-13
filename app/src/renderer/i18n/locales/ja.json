@@ -50,6 +50,8 @@
     "passwordsDoNotMatch": "パスワードが一致しません。",
     "walletCreated": "ウォレットを作成しました",
     "walletCreatedDesc": "新しいウォレットの準備ができました。ローカルAIモデルを選んで続行してください。",
+    "walletImported": "ウォレットをインポートしました",
+    "walletImportedDesc": "Suiアカウントの準備ができました。同じリカバリーフレーズで、後から他のチェーンを追加できます。",
     "yourAddress": "アドレス",
     "chooseModel": "ローカルAIを選択",
     "chooseModelDesc": "すべての推論は端末上で非公開に実行されます。",

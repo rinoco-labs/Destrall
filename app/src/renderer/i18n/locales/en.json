@@ -50,6 +50,8 @@
     "passwordsDoNotMatch": "Passwords do not match.",
     "walletCreated": "Wallet Created",
     "walletCreatedDesc": "Your new wallet is ready. Choose a local AI model to continue.",
+    "walletImported": "Wallet imported",
+    "walletImportedDesc": "Your Sui account is ready. You can add more chains later from the same recovery phrase.",
     "yourAddress": "Your address",
     "chooseModel": "Choose your local AI",
     "chooseModelDesc": "All inference runs privately on your device.",

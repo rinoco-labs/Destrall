@@ -1,7 +1,7 @@
 import { mnemonicToSeedSync } from "@scure/bip39";
 import { derivePath } from "ed25519-hd-key";
 import { ed25519 } from "@noble/curves/ed25519.js";
-import { suiAddressFromEd25519PublicKey } from "../../../../shared/suiAddress";
+import { suiAddressFromEd25519PublicKey } from "../../../../utils/sui-crypto";
 import { suiDerivationPath } from "./derivation-paths";
 
 export type DerivedSuiKeyMaterial = {

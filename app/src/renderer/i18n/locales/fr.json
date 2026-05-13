@@ -50,6 +50,8 @@
     "passwordsDoNotMatch": "Les mots de passe ne correspondent pas.",
     "walletCreated": "Portefeuille créé",
     "walletCreatedDesc": "Votre nouveau portefeuille est prêt. Choisissez un modèle d'IA local pour continuer.",
+    "walletImported": "Portefeuille importé",
+    "walletImportedDesc": "Votre compte Sui est prêt. Vous pourrez ajouter d'autres blockchains plus tard avec la même phrase de récupération.",
     "yourAddress": "Votre adresse",
     "chooseModel": "Choisissez votre IA locale",
     "chooseModelDesc": "Toute l'inférence s'exécute en privé sur votre appareil.",

@@ -20,6 +20,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 import { useAiStore } from "@/stores/aiStore";
 import { useWalletStore } from "@/stores/walletStore";
+import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
 import { desktopPreviewMnemonic, isDestrallDesktop } from "@/lib/desktopWallet";
 
 export const Route = createFileRoute("/")({
@@ -59,10 +60,6 @@ type Flow = "create" | "import";
 
 const STEP_ORDER: Step[] = ["phrase", "confirm-phrase", "password", "confirm", "created"];
 const IMPORT_STEP_ORDER: Step[] = ["import", "password", "confirm", "created"];
-
-function normalizeMnemonic(input: string): string {
-  return input.trim().split(/\s+/).filter(Boolean).join(" ").toLowerCase();
-}
 
 const MODELS = [
   {
@@ -118,7 +115,7 @@ function Index() {
     () => creationMnemonic?.split(/\s+/).filter(Boolean) ?? [],
     [creationMnemonic],
   );
-  const normalizedImportSeed = useMemo(() => normalizeMnemonic(seedInput), [seedInput]);
+  const normalizedImportSeed = useMemo(() => normalizeMnemonicInput(seedInput), [seedInput]);
   const isValidImportMnemonic = useMemo(
     () => normalizedImportSeed.length > 0 && validateMnemonic(normalizedImportSeed, wordlist),
     [normalizedImportSeed],
@@ -483,6 +480,7 @@ function RightPanel(props: RightPanelProps) {
           onChange={setSeedInput}
           onContinue={() => setStep("password")}
           isValid={isValidImportMnemonic}
+          showValidationError={seedInput.trim().length > 0 && !isValidImportMnemonic}
         />
       )}
 
@@ -512,6 +510,7 @@ function RightPanel(props: RightPanelProps) {
 
       {step === "created" && (
         <CreatedStep
+          flow={flow}
           address={createdAddress ?? ""}
           onContinue={() => setStep("model")}
         />
@@ -872,11 +871,13 @@ function ImportStep({
   onChange,
   onContinue,
   isValid,
+  showValidationError,
 }: {
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
   isValid: boolean;
+  showValidationError: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -895,6 +896,12 @@ function ImportStep({
         autoFocus
         className="mt-6 w-full rounded-2xl border border-border bg-background dark:bg-background/50 px-5 py-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 transition resize-none"
       />
+      <p className="mt-2 text-xs text-muted-foreground">
+        Extra spaces and line breaks are collapsed before validation.
+      </p>
+      {showValidationError ? (
+        <p className="mt-2 text-sm text-destructive">Enter a valid BIP-39 recovery phrase.</p>
+      ) : null}
       <PrimaryButton onClick={onContinue} disabled={!isValid}>
         {t("common.continue")} <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
@@ -902,19 +909,27 @@ function ImportStep({
   );
 }
 
-function CreatedStep({ address, onContinue }: { address: string; onContinue: () => void }) {
+function CreatedStep({
+  flow,
+  address,
+  onContinue,
+}: {
+  flow: Flow;
+  address: string;
+  onContinue: () => void;
+}) {
   const { t } = useTranslation();
+  const title =
+    flow === "import" ? t("onboarding.walletImported") : t("onboarding.walletCreated");
+  const subtitle =
+    flow === "import" ? t("onboarding.walletImportedDesc") : t("onboarding.walletCreatedDesc");
   return (
     <div className="flex flex-col items-center text-center">
       <div className="w-20 h-20 rounded-full bg-emerald-500/15 flex items-center justify-center">
         <Check className="w-10 h-10 text-emerald-400" strokeWidth={3} />
       </div>
-      <h1 className="mt-6 text-3xl font-bold tracking-tight text-foreground">
-        {t("onboarding.walletCreated")}
-      </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {t("onboarding.walletCreatedDesc")}
-      </p>
+      <h1 className="mt-6 text-3xl font-bold tracking-tight text-foreground">{title}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
 
       <div className="mt-6 w-full rounded-2xl border border-border bg-background dark:bg-background/50 px-5 py-4 text-center">
         <p className="text-xs text-muted-foreground">{t("onboarding.yourAddress")}</p>

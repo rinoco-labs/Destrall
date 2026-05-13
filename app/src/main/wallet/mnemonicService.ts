@@ -1,13 +1,15 @@
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
 
 export class MnemonicService {
   generate(): string {
     return generateMnemonic(wordlist, 128);
   }
 
+  /** Delegates to shared normalization so UI validation matches main-process import. */
   normalize(mnemonic: string): string {
-    return mnemonic.trim().split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+    return normalizeMnemonicInput(mnemonic);
   }
 
   validate(mnemonic: string): boolean {

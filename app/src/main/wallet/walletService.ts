@@ -3,8 +3,9 @@ import type { ChainId, WalletAccount, WalletProfile, WalletStatusSnapshot } from
 import { deriveSuiAccountFromMnemonic } from "../services/chains/sui/sui-wallet.service";
 import { getDatabase, runInTransaction } from "../persistence/database";
 import { MnemonicService } from "./mnemonicService";
-import { SecretVault } from "./secretVault";
+import { SecureWalletStorage } from "../services/security/secureWalletStorage";
 import { walletSession } from "./walletSession";
+import { executeCreateOrImportWallet } from "../services/wallet/importWalletService";
 
 const ACTIVE_ACCOUNT_KEY = "active_account_id";
 const SUPPORTED_CHAINS: ChainId[] = ["sui"];
@@ -34,7 +35,7 @@ type AccountRow = {
 class WalletService {
   private readonly db = getDatabase();
   private readonly mnemonicService = new MnemonicService();
-  private readonly vault = new SecretVault();
+  private readonly vault = new SecureWalletStorage();
 
   private rowToProfile(row: ProfileRow): WalletProfile {
     return {
@@ -105,14 +106,22 @@ class WalletService {
   getStatus(): WalletStatusSnapshot {
     const profiles = this.listProfiles();
     const accounts = this.listAccounts();
-    const activeAccountId = this.getActiveAccountId();
+    let activeAccountId = this.getActiveAccountId();
     const activeExists = activeAccountId
       ? accounts.some((account) => account.id === activeAccountId)
       : false;
+    if (!activeExists) {
+      if (accounts[0]) {
+        activeAccountId = accounts[0].id;
+        this.setActiveAccountId(activeAccountId);
+      } else {
+        activeAccountId = null;
+      }
+    }
     return {
       hasVault: this.vault.hasVault(),
       isUnlocked: walletSession.isUnlocked(),
-      activeAccountId: activeExists ? activeAccountId : (accounts[0]?.id ?? null),
+      activeAccountId,
       profiles,
       accounts,
     };
@@ -129,67 +138,17 @@ class WalletService {
     accountName?: string;
     imported?: boolean;
   }): WalletAccount {
-    const normalized = this.mnemonicService.normalize(args.mnemonic);
-    if (!this.mnemonicService.validate(normalized)) {
-      throw new Error("Invalid recovery phrase");
-    }
-    if (!args.password || args.password.length < 8) {
-      throw new Error("Wallet password must be at least 8 characters");
-    }
-
-    const now = Date.now();
-    const profileId = randomUUID();
-    const accountIndex = 0;
-    const profileName = args.profileName?.trim() || "Wallet 1";
-    const accountName = args.accountName?.trim() || "Account 1";
-
-    let accountId = "";
-    runInTransaction(this.db, () => {
-      this.db.prepare(`DELETE FROM wallet_accounts`).run();
-      this.db.prepare(`DELETE FROM wallet_profile`).run();
-      this.db.prepare(`DELETE FROM app_settings WHERE key = ?`).run(ACTIVE_ACCOUNT_KEY);
-
-      this.db
-        .prepare(
-          `INSERT INTO wallet_profile (id, name, created_at, updated_at)
-           VALUES (?, ?, ?, ?)`,
-        )
-        .run(profileId, profileName, now, now);
-
-      const insertAccount = this.db.prepare(
-        `INSERT INTO wallet_accounts
-         (id, profile_id, chain, name, address, public_key, account_index, derivation_path, icon, color, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
-      );
-
-      for (const chain of SUPPORTED_CHAINS) {
-        const derived = this.deriveAccount(chain, normalized, accountIndex);
-        const nextAccountId = randomUUID();
-        insertAccount.run(
-          nextAccountId,
-          profileId,
-          chain,
-          accountName,
-          derived.address,
-          derived.publicKey,
-          accountIndex,
-          derived.derivationPath,
-          now,
-          now,
-        );
-        if (chain === "sui") {
-          accountId = nextAccountId;
-        }
-      }
-
-      if (!accountId) {
-        throw new Error("Failed to create wallet account");
-      }
-      this.setActiveAccountId(accountId);
-    });
-    this.vault.upsertMnemonic(normalized, args.password);
-    walletSession.setMnemonic(normalized);
-    return this.getAccountById(accountId);
+    void args.imported;
+    return executeCreateOrImportWallet(
+      {
+        db: this.db,
+        mnemonicService: this.mnemonicService,
+        vault: this.vault,
+        session: walletSession,
+        supportedChains: SUPPORTED_CHAINS,
+      },
+      args,
+    );
   }
 
   createAdditionalAccount(args: { name: string }): WalletAccount {

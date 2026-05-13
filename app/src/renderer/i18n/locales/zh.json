@@ -50,6 +50,8 @@
     "passwordsDoNotMatch": "两次密码不一致。",
     "walletCreated": "钱包已创建",
     "walletCreatedDesc": "新钱包已就绪。请选择本地AI模型继续。",
+    "walletImported": "钱包已导入",
+    "walletImportedDesc": "您的 Sui 账户已就绪。日后可在同一助记词下添加更多链。",
     "yourAddress": "你的地址",
     "chooseModel": "选择本地AI",
     "chooseModelDesc": "所有推理都在你的设备上私密运行。",

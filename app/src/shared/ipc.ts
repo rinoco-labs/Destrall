@@ -1,4 +1,4 @@
-import type { WalletAccount, WalletProfile, WalletStatusSnapshot } from "./wallet/types";
+import type { WalletAccount, WalletStatusSnapshot } from "./wallet/types";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 

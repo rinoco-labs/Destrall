@@ -50,6 +50,8 @@
     "passwordsDoNotMatch": "Las contraseñas no coinciden.",
     "walletCreated": "Billetera creada",
     "walletCreatedDesc": "Tu nueva billetera está lista. Elige un modelo de IA local para continuar.",
+    "walletImported": "Billetera importada",
+    "walletImportedDesc": "Tu cuenta Sui está lista. Podrás añadir más cadenas más adelante con la misma frase de recuperación.",
     "yourAddress": "Tu dirección",
     "chooseModel": "Elige tu IA local",
     "chooseModelDesc": "Toda la inferencia se ejecuta de forma privada en tu dispositivo.",
