@@ -9,6 +9,10 @@ export type TokenBalanceView = {
   balanceRaw: string;
   balanceFormatted: string;
   usdValue?: string;
+  /** Spot USD price per 1 token from Aftermath `Prices.getCoinsToPriceInfo` when available. */
+  usdPricePerUnit?: number;
+  /** 24h % change from Aftermath; the API may return 0 when 24h data is not supported. */
+  usdPriceChange24hPct?: number;
   iconUrl?: string | null;
 };
 

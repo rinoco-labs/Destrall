@@ -42,14 +42,19 @@ async function getAftermathClient(env: SuiChainEnvironment): Promise<Aftermath |
   return pending;
 }
 
+export type AftermathNormalizedPriceInfo = {
+  priceUsd: number;
+  change24hPct: number;
+};
+
 /**
- * USD prices keyed by {@link normalizeSuiCoinType} so lookups align with Aftermath responses.
+ * Spot USD price and 24h % change keyed by {@link normalizeSuiCoinType} (Aftermath `getCoinsToPriceInfo`).
  */
-export async function fetchAftermathUsdPricesByNormalizedCoinType(
+export async function fetchAftermathPriceInfoByNormalizedCoinType(
   env: SuiChainEnvironment,
   coinTypes: string[],
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+): Promise<Map<string, AftermathNormalizedPriceInfo>> {
+  const out = new Map<string, AftermathNormalizedPriceInfo>();
   if (coinTypes.length === 0) return out;
 
   const client = await getAftermathClient(env);
@@ -58,14 +63,19 @@ export async function fetchAftermathUsdPricesByNormalizedCoinType(
   const normalizedUnique = [...new Set(coinTypes.map((c) => normalizeSuiCoinType(c)))];
   try {
     const pricesApi = client.Prices();
-    const record = await pricesApi.getCoinsToPrice({ coins: normalizedUnique });
-    for (const [key, price] of Object.entries(record)) {
-      if (typeof price === "number" && Number.isFinite(price) && price > 0) {
-        out.set(normalizeSuiCoinType(key), price);
-      }
+    const record = await pricesApi.getCoinsToPriceInfo({ coins: normalizedUnique });
+    for (const [key, raw] of Object.entries(record as Record<string, unknown>)) {
+      if (!raw || typeof raw !== "object") continue;
+      const price = (raw as { price?: unknown }).price;
+      const change24hPct = (raw as { priceChange24HoursPercentage?: unknown })
+        .priceChange24HoursPercentage;
+      if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) continue;
+      const pct =
+        typeof change24hPct === "number" && Number.isFinite(change24hPct) ? change24hPct : 0;
+      out.set(normalizeSuiCoinType(key), { priceUsd: price, change24hPct: pct });
     }
   } catch (e) {
-    console.warn("[aftermath-prices] getCoinsToPrice failed", e instanceof Error ? e.message : e);
+    console.warn("[aftermath-prices] getCoinsToPriceInfo failed", e instanceof Error ? e.message : e);
   }
   return out;
 }
@@ -89,22 +99,27 @@ export async function enrichSuiBalancesWithAftermathUsd(
 ): Promise<TokenBalanceView[]> {
   if (rows.length === 0 || env === "devnet") return rows;
 
-  const priceByNorm = await fetchAftermathUsdPricesByNormalizedCoinType(
+  const infoByNorm = await fetchAftermathPriceInfoByNormalizedCoinType(
     env,
     rows.map((r) => r.coinType),
   );
 
   return rows.map((b) => {
     const n = normalizeSuiCoinType(b.coinType);
-    const price = priceByNorm.get(n);
-    if (price == null) return { ...b };
+    const info = infoByNorm.get(n);
+    if (info == null) return { ...b };
 
     const human = tokenHumanAmount(b.balanceRaw, b.decimals);
     if (!Number.isFinite(human)) return { ...b };
 
-    const usd = human * price;
+    const usd = human * info.priceUsd;
     if (!Number.isFinite(usd) || usd <= 0) return { ...b };
 
-    return { ...b, usdValue: usdDisplay.format(usd) };
+    return {
+      ...b,
+      usdValue: usdDisplay.format(usd),
+      usdPricePerUnit: info.priceUsd,
+      usdPriceChange24hPct: info.change24hPct,
+    };
   });
 }
