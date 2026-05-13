@@ -4,6 +4,7 @@ import started from "electron-squirrel-startup";
 import { getDatabase } from "./main/persistence/database";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
+import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
 import { aiModelMainService } from "./main/ai/aiModelMainService";
 
 if (started) {
@@ -34,6 +35,7 @@ app.whenReady().then(() => {
   getDatabase();
   registerWalletIpcHandlers();
   registerAiModelIpcHandlers();
+  registerAssistantChatIpcHandlers();
   void aiModelMainService.restoreFromPersistence().catch((err) => {
     console.error("[llm] Startup restore failed", err);
   });

@@ -48,6 +48,35 @@ const api: DestrallApi = {
       };
     },
   },
+  assistantChat: {
+    list: (accountId: string) => ipcRenderer.invoke(IPCChannels.assistantChatList, accountId),
+    search: (payload: { accountId: string; query: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatSearch, payload),
+    create: (payload: { accountId: string; title?: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatCreate, payload),
+    get: (payload: { accountId: string; chatId: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatGet, payload),
+    rename: (payload: { accountId: string; chatId: string; title: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatRename, payload),
+    pin: (payload: { accountId: string; chatId: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatPin, payload),
+    unpin: (payload: { accountId: string; chatId: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatUnpin, payload),
+    delete: (payload: { accountId: string; chatId: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatDelete, payload),
+    messages: (payload: { accountId: string; chatId: string }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatMessages, payload),
+    addMessage: (payload: {
+      accountId: string;
+      chatId: string;
+      role: string;
+      content: string;
+      metadata?: string | null;
+    }) => ipcRenderer.invoke(IPCChannels.assistantChatAddMessage, payload),
+    getActive: (accountId: string) => ipcRenderer.invoke(IPCChannels.assistantChatGetActive, accountId),
+    setActive: (payload: { accountId: string; chatId: string | null }) =>
+      ipcRenderer.invoke(IPCChannels.assistantChatSetActive, payload),
+  },
 };
 
 contextBridge.exposeInMainWorld("destrallApi", api);

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   PanelRightClose,
@@ -34,12 +34,25 @@ import {
   X,
   FileText,
   UploadCloud,
+  PencilLine,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useWalletStore } from "@/stores/walletStore";
-import { useSettingsStore } from "@/stores/settingsStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
+import { useAssistantChatStore } from "@/stores/assistantChatStore";
 import { isDestrallDesktop } from "@/lib/desktopWallet";
+import type { AssistantChatRow, AssistantMessageRow } from "../../shared/assistantChat";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -164,7 +177,30 @@ type Attachment = {
   isImage: boolean;
 };
 
-const initialMessages: Msg[] = [];
+function rowsToPersistedMsgs(rows: AssistantMessageRow[]): Msg[] {
+  return rows
+    .filter((r) => r.role === "user" || r.role === "assistant")
+    .map((r) => ({
+      id: r.id,
+      kind: r.role as "user" | "assistant",
+      text: r.content,
+    }));
+}
+
+function formatChatListTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
 
 function UserBubble({ text, attachments }: { text: string; attachments?: Attachment[] }) {
   return (
@@ -876,31 +912,47 @@ function ActionBubble({
   );
 }
 
-type ChatHistoryItem = { id: string; title: string; pinned: boolean };
-
-const initialHistory: ChatHistoryItem[] = [];
-
 function HistoryItem({
-  item,
+  row,
   active,
+  onSelect,
   onPin,
+  onRename,
   onDelete,
+  subtitle,
 }: {
-  item: ChatHistoryItem;
+  row: AssistantChatRow;
   active: boolean;
+  onSelect: () => void;
   onPin: () => void;
+  onRename: () => void;
   onDelete: () => void;
+  subtitle: string;
 }) {
   return (
     <div className="relative group">
       <button
         type="button"
-        className={`w-full text-left pl-3 pr-9 py-2 rounded-lg text-sm font-medium truncate transition ${
-          active ? "bg-secondary/60" : "hover:bg-secondary/40"
+        onClick={onSelect}
+        className={`w-full text-left pl-3 pr-9 py-2.5 rounded-xl text-sm font-medium transition ${
+          active ? "bg-secondary/70 ring-1 ring-brand/30" : "hover:bg-secondary/50"
         }`}
       >
-        {item.pinned && <Pin className="inline-block w-3 h-3 mr-1.5 -mt-0.5 text-brand" />}
-        {item.title}
+        <div className="flex items-start gap-2 min-w-0">
+          {row.pinned ? (
+            <Pin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-brand" aria-hidden />
+          ) : (
+            <span className="w-3.5 shrink-0" aria-hidden />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-semibold">{row.title}</div>
+            {subtitle ? (
+              <div className="truncate text-[11px] text-muted-foreground mt-0.5 font-normal">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -914,8 +966,12 @@ function HistoryItem({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" sideOffset={8} className="w-44 rounded-xl">
+          <DropdownMenuItem onSelect={onRename} className="gap-2 text-xs font-medium cursor-pointer">
+            <PencilLine className="w-3.5 h-3.5" />
+            Rename
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onPin} className="gap-2 text-xs font-medium cursor-pointer">
-            {item.pinned ? (
+            {row.pinned ? (
               <>
                 <PinOff className="w-3.5 h-3.5" />
                 Unpin chat
@@ -950,9 +1006,9 @@ function AssistantPage() {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<Msg[]>(initialMessages);
-  const [history, setHistory] = useState<ChatHistoryItem[]>(initialHistory);
-  const [activeChatId, setActiveChatId] = useState<string>("");
+  const [overlayMessages, setOverlayMessages] = useState<Msg[]>([]);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -962,17 +1018,58 @@ function AssistantPage() {
   const dragDepth = useRef(0);
 
   const activeAccountId = useWalletStore((s) => s.activeAccountId);
-  const language = useSettingsStore((s) => s.language);
-  const aiPersonality = useSettingsStore((s) => s.aiPersonality);
   const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
   const runtimeError = useAiModelStore((s) => s.runtimeError);
   const selectedMeta = useAiModelStore((s) =>
     s.availableModels.find((m) => m.id === (s.activeModelId ?? s.selectedModelId)),
   );
   const initializeModelState = useAiModelStore((s) => s.initializeModelState);
-  const sendMessage = useAiModelStore((s) => s.sendMessage);
   const refreshAi = useAiModelStore((s) => s.refreshFromMain);
-  const [llmBusy, setLlmBusy] = useState(false);
+
+  const initializeForAccount = useAssistantChatStore((s) => s.initializeForAccount);
+  const createNewChat = useAssistantChatStore((s) => s.createNewChat);
+  const selectChat = useAssistantChatStore((s) => s.selectChat);
+  const sendChatMessage = useAssistantChatStore((s) => s.sendMessage);
+  const searchChats = useAssistantChatStore((s) => s.searchChats);
+  const pinChat = useAssistantChatStore((s) => s.pinChat);
+  const unpinChat = useAssistantChatStore((s) => s.unpinChat);
+  const removeChat = useAssistantChatStore((s) => s.deleteChat);
+  const renameChat = useAssistantChatStore((s) => s.renameChat);
+  const chatSearchOverride = useAssistantChatStore((s) => s.chatSearchOverride);
+  const chatsByAccountId = useAssistantChatStore((s) => s.chatsByAccountId);
+  const activeChatIdByAccountId = useAssistantChatStore((s) => s.activeChatIdByAccountId);
+  const messagesByChatId = useAssistantChatStore((s) => s.messagesByChatId);
+  const assistantStreaming = useAssistantChatStore((s) => s.assistantStreaming);
+  const chatError = useAssistantChatStore((s) => s.error);
+
+  const activeChatId =
+    activeAccountId != null ? (activeChatIdByAccountId[activeAccountId] ?? null) : null;
+  const persistedRows =
+    activeAccountId && activeChatId
+      ? (messagesByChatId[`${activeAccountId}:${activeChatId}`] ?? [])
+      : [];
+  const messages = useMemo(
+    () => [...rowsToPersistedMsgs(persistedRows), ...overlayMessages],
+    [persistedRows, overlayMessages],
+  );
+
+  useEffect(() => {
+    void initializeForAccount(activeAccountId ?? null);
+    setOverlayMessages([]);
+    setSearch("");
+  }, [activeAccountId, initializeForAccount]);
+
+  useEffect(() => {
+    setOverlayMessages([]);
+  }, [activeAccountId, activeChatId]);
+
+  useEffect(() => {
+    if (!activeAccountId) return;
+    const t = window.setTimeout(() => {
+      void searchChats(activeAccountId, search);
+    }, 320);
+    return () => window.clearTimeout(t);
+  }, [activeAccountId, search, searchChats]);
 
   useEffect(() => {
     void initializeModelState();
@@ -998,8 +1095,8 @@ function AssistantPage() {
   }, []);
 
   const updateAction = (id: string, patch: Partial<Extract<Msg, { kind: "action" }>>) =>
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id && m.kind === "action" ? { ...m, ...patch } : m))
+    setOverlayMessages((prev) =>
+      prev.map((m) => (m.id === id && m.kind === "action" ? { ...m, ...patch } : m)),
     );
 
   const handleApprove = (id: string) => {
@@ -1013,7 +1110,7 @@ function AssistantPage() {
   };
 
   const handleReject = (id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setOverlayMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
   const addFiles = (files: FileList | File[]) => {
@@ -1045,7 +1142,7 @@ function AssistantPage() {
     if (!text && attachments.length === 0) return;
 
     if (attachments.length > 0) {
-      setMessages((prev) => [
+      setOverlayMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -1065,7 +1162,7 @@ function AssistantPage() {
     }
 
     if (!isDestrallDesktop()) {
-      setMessages((prev) => [
+      setOverlayMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), kind: "user", text },
         {
@@ -1079,7 +1176,7 @@ function AssistantPage() {
     }
 
     if (!activeAccountId) {
-      setMessages((prev) => [
+      setOverlayMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), kind: "user", text },
         {
@@ -1094,7 +1191,7 @@ function AssistantPage() {
 
     if (!isModelLoaded) {
       void refreshAi();
-      setMessages((prev) => [
+      setOverlayMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), kind: "user", text },
         {
@@ -1107,39 +1204,16 @@ function AssistantPage() {
       return;
     }
 
-    const prior = messages
-      .filter((m): m is Extract<Msg, { kind: "user" }> | Extract<Msg, { kind: "assistant" }> => {
-        return m.kind === "user" || m.kind === "assistant";
-      })
-      .map((m) =>
-        m.kind === "user"
-          ? ({ role: "user" as const, content: m.text })
-          : ({ role: "assistant" as const, content: m.text }),
-      );
-
-    const conversation = [...prior, { role: "user" as const, content: text }];
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), kind: "user", text }]);
     setMessage("");
-    setLlmBusy(true);
     try {
-      const reply = await sendMessage({
-        messages: conversation,
-        accountId: activeAccountId,
-        language,
-        personalityId: aiPersonality,
-      });
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), kind: "assistant", text: reply },
-      ]);
+      await sendChatMessage(activeAccountId, activeChatId, text);
+      textareaRef.current?.focus();
     } catch (e) {
-      const err = e instanceof Error ? e.message : "The model failed to respond.";
-      setMessages((prev) => [
+      const err = e instanceof Error ? e.message : "Could not send message.";
+      setOverlayMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), kind: "assistant", text: `**Error**\n${err}` },
       ]);
-    } finally {
-      setLlmBusy(false);
     }
   };
 
@@ -1164,19 +1238,24 @@ function AssistantPage() {
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   };
 
-  const filteredHistory = history.filter((h) =>
-    h.title.toLowerCase().includes(search.toLowerCase())
-  );
-  const sortedHistory = [...filteredHistory].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned)
-  );
+  const sidebarList =
+    activeAccountId != null ? (chatSearchOverride ?? chatsByAccountId[activeAccountId] ?? []) : [];
+  const pinnedRows = sidebarList.filter((c) => c.pinned);
+  const recentRows = sidebarList.filter((c) => !c.pinned);
 
-  const togglePin = (id: string) =>
-    setHistory((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, pinned: !h.pinned } : h))
-    );
-  const deleteChat = (id: string) =>
-    setHistory((prev) => prev.filter((h) => h.id !== id));
+  const rowSubtitle = (row: AssistantChatRow) => {
+    if (row.lastPreview) {
+      const t = row.lastPreview.replace(/\s+/g, " ").trim();
+      return t.length > 56 ? `${t.slice(0, 53)}…` : t;
+    }
+    return formatChatListTime(row.lastMessageAt ?? row.updatedAt);
+  };
+
+  const onNewChat = async () => {
+    if (!activeAccountId || !isDestrallDesktop()) return;
+    await createNewChat(activeAccountId);
+    textareaRef.current?.focus();
+  };
 
   return (
     <AppShell active="assistant">
@@ -1188,6 +1267,7 @@ function AssistantPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => void onNewChat()}
                 aria-label="New chat"
                 className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-brand text-brand-foreground hover:opacity-90 transition"
               >
@@ -1216,6 +1296,11 @@ function AssistantPage() {
             onDrop={onDrop}
           >
             <div ref={scrollRef} className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {isDestrallDesktop() && chatError ? (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {chatError}
+                </div>
+              ) : null}
               {isDestrallDesktop() && runtimeError ? (
                 <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {runtimeError}
@@ -1253,7 +1338,7 @@ function AssistantPage() {
                   />
                 );
               })}
-              {llmBusy ? (
+              {assistantStreaming ? (
                 <div className="flex justify-start">
                   <div className="inline-flex items-center gap-2 rounded-3xl rounded-bl-lg border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -1375,7 +1460,7 @@ function AssistantPage() {
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={llmBusy}
+                disabled={assistantStreaming}
                 aria-label="Send message"
                 className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-brand text-brand-foreground hover:opacity-90 transition shrink-0 mb-1"
               >
@@ -1399,6 +1484,7 @@ function AssistantPage() {
                 <h2 className="text-lg font-semibold">Chat History</h2>
                 <button
                   type="button"
+                  onClick={() => void onNewChat()}
                   aria-label="New chat"
                   className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-brand text-brand-foreground hover:opacity-90 transition"
                 >
@@ -1415,30 +1501,139 @@ function AssistantPage() {
                   className="w-full rounded-full border border-border bg-card/40 pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-brand transition"
                 />
               </div>
-              <div className="flex-1 min-h-0 space-y-1 overflow-y-auto overflow-x-visible pr-1 pb-6">
-                {sortedHistory.length === 0 ? (
+              <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-visible pr-1 pb-6">
+                {!activeAccountId ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">Unlock your wallet to see chats.</p>
+                ) : sidebarList.length === 0 ? (
                   <p className="px-3 py-2 text-xs text-muted-foreground">
-                    No chats found.
+                    {search.trim() ? "No chats match your search." : "No chats yet. Start a new chat or send a message."}
                   </p>
                 ) : (
-                  sortedHistory.map((h) => (
-                    <HistoryItem
-                      key={h.id}
-                      item={h}
-                      active={h.id === activeChatId}
-                      onPin={() => togglePin(h.id)}
-                      onDelete={() => {
-                        deleteChat(h.id);
-                        if (activeChatId === h.id) setActiveChatId("");
-                      }}
-                    />
-                  ))
+                  <>
+                    {pinnedRows.length > 0 ? (
+                      <div>
+                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Pinned
+                        </p>
+                        <div className="space-y-1">
+                          {pinnedRows.map((h) => (
+                            <HistoryItem
+                              key={h.id}
+                              row={h}
+                              active={h.id === activeChatId}
+                              subtitle={rowSubtitle(h)}
+                              onSelect={() => {
+                                if (!activeAccountId) return;
+                                void selectChat(activeAccountId, h.id);
+                              }}
+                              onPin={() => {
+                                if (!activeAccountId) return;
+                                void (h.pinned ? unpinChat(activeAccountId, h.id) : pinChat(activeAccountId, h.id));
+                              }}
+                              onRename={() => setRenameTarget({ id: h.id, title: h.title })}
+                              onDelete={() => setDeleteTargetId(h.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {recentRows.length > 0 ? (
+                      <div>
+                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Recent
+                        </p>
+                        <div className="space-y-1">
+                          {recentRows.map((h) => (
+                            <HistoryItem
+                              key={h.id}
+                              row={h}
+                              active={h.id === activeChatId}
+                              subtitle={rowSubtitle(h)}
+                              onSelect={() => {
+                                if (!activeAccountId) return;
+                                void selectChat(activeAccountId, h.id);
+                              }}
+                              onPin={() => {
+                                if (!activeAccountId) return;
+                                void (h.pinned ? unpinChat(activeAccountId, h.id) : pinChat(activeAccountId, h.id));
+                              }}
+                              onRename={() => setRenameTarget({ id: h.id, title: h.title })}
+                              onDelete={() => setDeleteTargetId(h.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
             </aside>
           </>
         )}
       </div>
+
+      <AlertDialog open={deleteTargetId != null} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the chat and all of its messages for this account. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-xl bg-rose-600 text-white hover:bg-rose-600/90"
+              onClick={() => {
+                if (!activeAccountId || !deleteTargetId) return;
+                void removeChat(activeAccountId, deleteTargetId).then(() => setDeleteTargetId(null));
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={renameTarget != null} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename chat</DialogTitle>
+            <DialogDescription>Choose a short title you will recognize later.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              value={renameTarget?.title ?? ""}
+              onChange={(e) =>
+                setRenameTarget((prev) => (prev ? { ...prev, title: e.target.value } : prev))
+              }
+              placeholder="Chat title"
+              className="rounded-xl"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-xl text-sm font-medium border border-border hover:bg-secondary transition"
+              onClick={() => setRenameTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-xl text-sm font-bold bg-brand text-brand-foreground hover:opacity-90 transition"
+              onClick={() => {
+                if (!activeAccountId || !renameTarget) return;
+                const t = renameTarget.title.trim();
+                if (!t) return;
+                void renameChat(activeAccountId, renameTarget.id, t).then(() => setRenameTarget(null));
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

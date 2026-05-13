@@ -1,4 +1,5 @@
 import type { ModelCatalogEntry } from "../ai/modelCatalog";
+import type { AssistantChatRow, AssistantMessageRow } from "./assistantChat";
 import type { WalletAccount, WalletStatusSnapshot } from "./wallet/types";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -92,6 +93,26 @@ export type DestrallApi = {
     chat: (payload: AssistantChatRequest) => Promise<RpcResult<string>>;
     onModelProgress: (listener: (event: ModelProgressEvent) => void) => () => void;
   };
+  assistantChat: {
+    list: (accountId: string) => Promise<RpcResult<AssistantChatRow[]>>;
+    search: (payload: { accountId: string; query: string }) => Promise<RpcResult<AssistantChatRow[]>>;
+    create: (payload: { accountId: string; title?: string }) => Promise<RpcResult<AssistantChatRow>>;
+    get: (payload: { accountId: string; chatId: string }) => Promise<RpcResult<AssistantChatRow>>;
+    rename: (payload: { accountId: string; chatId: string; title: string }) => Promise<RpcResult<AssistantChatRow>>;
+    pin: (payload: { accountId: string; chatId: string }) => Promise<RpcResult<AssistantChatRow>>;
+    unpin: (payload: { accountId: string; chatId: string }) => Promise<RpcResult<AssistantChatRow>>;
+    delete: (payload: { accountId: string; chatId: string }) => Promise<RpcResult<{ ok: true }>>;
+    messages: (payload: { accountId: string; chatId: string }) => Promise<RpcResult<AssistantMessageRow[]>>;
+    addMessage: (payload: {
+      accountId: string;
+      chatId: string;
+      role: string;
+      content: string;
+      metadata?: string | null;
+    }) => Promise<RpcResult<AssistantMessageRow>>;
+    getActive: (accountId: string) => Promise<RpcResult<string | null>>;
+    setActive: (payload: { accountId: string; chatId: string | null }) => Promise<RpcResult<{ ok: true }>>;
+  };
 };
 
 export const IPCChannels = {
@@ -117,4 +138,16 @@ export const IPCChannels = {
   llmAssistantRuntime: "llm:assistant-runtime",
   llmChat: "llm:chat",
   llmModelProgress: "llm:model-progress",
+  assistantChatList: "assistant-chat:list",
+  assistantChatSearch: "assistant-chat:search",
+  assistantChatCreate: "assistant-chat:create",
+  assistantChatGet: "assistant-chat:get",
+  assistantChatRename: "assistant-chat:rename",
+  assistantChatPin: "assistant-chat:pin",
+  assistantChatUnpin: "assistant-chat:unpin",
+  assistantChatDelete: "assistant-chat:delete",
+  assistantChatMessages: "assistant-chat:messages",
+  assistantChatAddMessage: "assistant-chat:add-message",
+  assistantChatGetActive: "assistant-chat:get-active",
+  assistantChatSetActive: "assistant-chat:set-active",
 } as const;
