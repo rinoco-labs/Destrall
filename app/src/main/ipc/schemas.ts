@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { naviYieldProposalSnapshotV1Schema } from "../../packages/core/yield/navi/navi.schemas";
 
 export const walletCreateSchema = z.object({
   mnemonic: z.string().min(1),
@@ -84,6 +85,11 @@ export const swapProposalSnapshotV1Schema = z.object({
 export const chainExecuteSwapSchema = z.object({
   accountId: z.string().min(1).max(128),
   proposalSnapshot: swapProposalSnapshotV1Schema,
+});
+
+export const chainExecuteNaviYieldSchema = z.object({
+  accountId: z.string().min(1).max(128),
+  proposalSnapshot: naviYieldProposalSnapshotV1Schema,
 });
 
 const chainIdSchema = z.enum(["sui", "solana", "evm"]);

@@ -52,6 +52,8 @@ export type YieldPosition = {
   protocol: string;
   asset: string;
   supplied: string;
+  currentValue?: string;
+  accruedInterest?: string;
   apy?: string;
   valueUsd?: string;
 };
@@ -80,6 +82,7 @@ export type ProtocolPool = {
   apy?: string;
   tvlUsd?: string;
   utilization?: string;
+  riskLabel?: string;
 };
 
 export type ProtocolCoin = {
@@ -99,6 +102,7 @@ export type ProtocolPayload =
       view: "pools";
       title: string;
       source: string;
+      recommendationNote?: string;
       pools: ProtocolPool[];
       emptyHint?: string;
     }
@@ -318,7 +322,11 @@ function YieldRow({ p }: { p: YieldPosition }) {
         <p className="text-sm font-semibold truncate">
           {p.protocol} · {p.asset}
         </p>
-        <p className="text-xs text-muted-foreground">{p.supplied}</p>
+        <p className="text-xs text-muted-foreground">
+          {p.supplied}
+          {p.currentValue ? ` · Position ${p.currentValue}` : ""}
+          {p.accruedInterest ? ` · Interest ${p.accruedInterest}` : ""}
+        </p>
       </div>
       <div className="text-right">
         {p.valueUsd && <p className="text-sm font-semibold">{p.valueUsd}</p>}
@@ -447,11 +455,13 @@ function PoolRow({ p }: { p: ProtocolPool }) {
         <p className="text-sm font-semibold truncate">
           {p.protocol} · {p.asset}
         </p>
-        {(p.tvlUsd || p.utilization) && (
+        {(p.tvlUsd || p.utilization || p.riskLabel) && (
           <p className="text-xs text-muted-foreground">
             {p.tvlUsd && <>TVL {p.tvlUsd}</>}
-            {p.tvlUsd && p.utilization && " · "}
+            {p.tvlUsd && (p.utilization || p.riskLabel) && " · "}
             {p.utilization && <>Util {p.utilization}</>}
+            {p.utilization && p.riskLabel && " · "}
+            {p.riskLabel && <>Risk {p.riskLabel}</>}
           </p>
         )}
       </div>
@@ -530,6 +540,12 @@ export function ProtocolBubble({ payload }: { payload: ProtocolPayload }) {
             {payload.source}
           </span>
         </div>
+
+        {payload.view === "pools" && payload.recommendationNote ? (
+          <p className="px-4 pt-2 pb-2 text-xs text-muted-foreground border-b border-border/40">
+            {payload.recommendationNote}
+          </p>
+        ) : null}
 
         {total === 0 ? (
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">

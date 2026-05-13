@@ -59,6 +59,9 @@ export async function buildAssistantContextDocument(accountId: string): Promise<
   lines.push(
     "Risk settings: treat every send as irreversible; verify the full recipient address before approving.",
   );
+  lines.push(
+    "Yield risk profile (optional): set app_settings key assistant_yield_risk_tolerance to conservative | balanced | aggressive to tune pool ordering hints.",
+  );
 
   return lines.filter(Boolean).join("\n");
 }

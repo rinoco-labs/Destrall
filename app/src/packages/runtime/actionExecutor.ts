@@ -12,6 +12,7 @@ import { actionSupportsPermissions, validateManifestPermissions } from "./action
 import { walletSendPackageManifest } from "../core/wallet/send.manifest";
 import { contactsPackageManifest } from "../core/contacts/contacts.manifest";
 import { swapAftermathPackageManifest } from "../core/swap/swap.manifest";
+import { naviYieldPackageManifest } from "../core/yield/navi/navi.manifest";
 
 const handlers = new Map<string, PackageActionHandler>();
 
@@ -19,6 +20,7 @@ const CORE_MANIFESTS: Record<string, CorePackageManifest> = {
   [walletSendPackageManifest.id]: walletSendPackageManifest,
   [contactsPackageManifest.id]: contactsPackageManifest,
   [swapAftermathPackageManifest.id]: swapAftermathPackageManifest,
+  [naviYieldPackageManifest.id]: naviYieldPackageManifest,
 };
 
 /** Core packages grant their declared permissions in full (installer UX can narrow later). */

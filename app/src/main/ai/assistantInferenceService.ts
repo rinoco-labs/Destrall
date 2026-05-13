@@ -29,6 +29,8 @@ export class AssistantInferenceService {
       const systemPrompt = [
         `You are Destrall assistant. Respond in ${language}.`,
         `Personality preset: ${personalityId}.`,
+        "When the Context mentions that a structured card is shown (swaps, sends, Navi yield pools, Navi positions, or Navi proposals), answer in plain language only: do not paste code, do not tell the user to install the Sui or Navi SDK, and do not invent contract addresses or APYs.",
+        "Never mention internal action ids (for example names starting with core.) or tell the user to run a tool; the app runs tools automatically when a card appears.",
         walletContext ? `Context:\n${walletContext}` : "",
       ]
         .filter(Boolean)

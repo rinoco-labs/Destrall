@@ -7,6 +7,7 @@ import type {
   TransferPrepareResult,
 } from "../../types/blockchain";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
+import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
 import type { ChainId } from "../../shared/wallet/types";
 import type { SuiChainEnvironment } from "../../config/chains/sui";
 
@@ -65,6 +66,13 @@ export async function desktopExecuteSwap(payload: {
   proposalSnapshot: SwapProposalSnapshotV1;
 }): Promise<SwapExecuteResult> {
   return unwrap(api().chain.executeSwap(payload));
+}
+
+export async function desktopExecuteNaviYield(payload: {
+  accountId: string;
+  proposalSnapshot: NaviYieldProposalSnapshotV1;
+}): Promise<SwapExecuteResult> {
+  return unwrap(api().chain.executeNaviYield(payload));
 }
 
 export function subscribeChainNetworkChanged(listener: () => void): () => void {

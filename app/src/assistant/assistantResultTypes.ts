@@ -5,6 +5,7 @@
 
 import type { SendProposalSnapshot } from "../packages/runtime/transactionProposalTypes";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
+import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
 
 export type AssistantAssetFlow = {
   direction: "out" | "in";
@@ -47,8 +48,13 @@ export type YieldPositionsResult = {
     protocol: string;
     asset: string;
     supplied: string;
+    currentValue?: string;
+    accruedInterest?: string;
     apy?: string;
     valueUsd?: string;
+    coinType?: string;
+    poolObjectId?: string;
+    riskLabel?: string;
   }>;
   emptyHint?: string;
 };
@@ -57,6 +63,7 @@ export type AvailableYieldPoolsResult = {
   type: "available_yield_pools";
   network: string;
   protocolLabel: string;
+  recommendationNote?: string;
   pools: Array<{
     protocol: string;
     asset: string;
@@ -64,6 +71,7 @@ export type AvailableYieldPoolsResult = {
     tvlUsd?: string;
     utilization?: string;
     riskLabel?: string;
+    coinType?: string;
   }>;
   emptyHint?: string;
 };
@@ -137,6 +145,7 @@ export type NaviDepositProposalResult = {
   errorMessage?: string;
   digest?: string;
   explorerUrl?: string | null;
+  proposalSnapshot?: NaviYieldProposalSnapshotV1;
   card: AssistantProposalCard;
 };
 
@@ -147,7 +156,17 @@ export type NaviWithdrawProposalResult = {
   errorMessage?: string;
   digest?: string;
   explorerUrl?: string | null;
+  proposalSnapshot?: NaviYieldProposalSnapshotV1;
   card: AssistantProposalCard;
+};
+
+export type YieldExecutionResultResult = {
+  type: "yield_execution_result";
+  title: string;
+  digest: string;
+  explorerUrl?: string | null;
+  summary: string;
+  kind?: "deposit" | "withdraw";
 };
 
 export type TransactionResultResult = {
@@ -176,6 +195,7 @@ export type AssistantStructuredResult =
   | NaviWithdrawProposalResult
   | TransactionResultResult
   | SwapExecutionResultResult
+  | YieldExecutionResultResult
   | AssistantErrorResult;
 
 export type AssistantMessageMetadataV1 = {

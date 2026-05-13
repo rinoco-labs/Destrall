@@ -9,6 +9,14 @@ export const LIST_SWAPPABLE_TOKENS_ACTION_NAME = "core.swap.aftermath.list_swapp
 
 export const PREPARE_SWAP_ACTION_NAME = "core.swap.aftermath.prepare_swap";
 
+export const LIST_YIELD_POOLS_ACTION_NAME = "core.yield.navi.list_yield_pools";
+
+export const GET_YIELD_POSITIONS_ACTION_NAME = "core.yield.navi.get_yield_positions";
+
+export const PREPARE_YIELD_DEPOSIT_ACTION_NAME = "core.yield.navi.prepare_yield_deposit";
+
+export const PREPARE_YIELD_WITHDRAW_ACTION_NAME = "core.yield.navi.prepare_yield_withdraw";
+
 export const prepareSendFunctionSchema = {
   name: PREPARE_SEND_ACTION_NAME,
   description:
@@ -81,8 +89,73 @@ export const prepareSwapFunctionSchema = {
   },
 } as const;
 
+export const listYieldPoolsFunctionSchema = {
+  name: LIST_YIELD_POOLS_ACTION_NAME,
+  description:
+    "List Navi lending pools with live APY on Sui mainnet (read-only). Use for yield pool questions. Optional risk-based sorting.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      asset: { type: "string", description: "Optional filter by asset symbol." },
+      sortBy: { type: "string", description: "Optional: apy | tvl | risk" },
+      riskProfile: { type: "string", description: "Optional: conservative | balanced | aggressive" },
+    },
+    required: [],
+  },
+} as const;
+
+export const getYieldPositionsFunctionSchema = {
+  name: GET_YIELD_POSITIONS_ACTION_NAME,
+  description: "List the user's Navi supply positions on Sui mainnet (read-only).",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      asset: { type: "string", description: "Optional filter by asset symbol." },
+    },
+    required: [],
+  },
+} as const;
+
+export const prepareYieldDepositFunctionSchema = {
+  name: PREPARE_YIELD_DEPOSIT_ACTION_NAME,
+  description:
+    "Prepare a Navi deposit transaction for user review. Never executes without explicit approval on the Navi card.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      asset: { type: "string", description: "Asset symbol (e.g. USDC, SUI)." },
+      amount: { type: "string", description: "Human amount or percentage string when amountKind is percentage." },
+      amountKind: { type: "string", description: "absolute (default) or percentage" },
+    },
+    required: ["asset", "amount"],
+  },
+} as const;
+
+export const prepareYieldWithdrawFunctionSchema = {
+  name: PREPARE_YIELD_WITHDRAW_ACTION_NAME,
+  description:
+    "Prepare a Navi withdraw transaction for user review. Never executes without explicit approval on the Navi card.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      asset: { type: "string", description: "Asset symbol (e.g. USDC, SUI)." },
+      amount: { type: "string", description: "Human amount; omit when amountKind is all." },
+      amountKind: { type: "string", description: "absolute | percentage | all | interest" },
+    },
+    required: ["asset"],
+  },
+} as const;
+
 export const assistantToolDefinitionsForModel = [
   prepareSendFunctionSchema,
   listSwappableTokensFunctionSchema,
   prepareSwapFunctionSchema,
+  listYieldPoolsFunctionSchema,
+  getYieldPositionsFunctionSchema,
+  prepareYieldDepositFunctionSchema,
+  prepareYieldWithdrawFunctionSchema,
 ];

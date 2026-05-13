@@ -1,6 +1,7 @@
 import { registerWalletSendPackage } from "../core/wallet/send.package";
 import { registerContactsPackage } from "../core/contacts/contacts.package";
 import { registerSwapAftermathPackage } from "../core/swap/swap.package";
+import { registerNaviYieldPackage } from "../core/yield/navi/navi.package";
 
 let registered = false;
 
@@ -11,4 +12,5 @@ export function registerCorePackages() {
   registerWalletSendPackage();
   registerContactsPackage();
   registerSwapAftermathPackage();
+  registerNaviYieldPackage();
 }

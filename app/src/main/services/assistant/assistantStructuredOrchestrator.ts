@@ -1,8 +1,6 @@
-import { randomUUID } from "node:crypto";
 import type { SuiChainEnvironment } from "../../../config/chains/sui";
 import type { TokenBalanceView } from "../../../types/blockchain";
 import type {
-  AssistantProposalCard,
   AssistantStructuredResult,
 } from "../../../assistant/assistantResultTypes";
 import {
@@ -59,86 +57,6 @@ function portfolioFromBalances(
   };
 }
 
-function buildNaviDepositCard(params: {
-  amount: string;
-  token: string;
-  network: string;
-}): AssistantProposalCard {
-  const receipt = `n${params.token}`;
-  return {
-    title: "Navi deposit",
-    label: `${params.amount} ${params.token}`,
-    source: { type: "package", name: "NAVI PROTOCOL" },
-    flows: [
-      {
-        direction: "out",
-        amount: params.amount,
-        token: params.token,
-        kind: "token",
-      },
-      {
-        direction: "in",
-        amount: "1",
-        token: receipt,
-        kind: "object",
-        objectName: "Navi supply receipt",
-      },
-    ],
-    details: [
-      { k: "Action", v: "Navi supply (preview)" },
-      { k: "Token", v: params.token },
-      { k: "Amount", v: `${params.amount} ${params.token}` },
-      { k: "Protocol", v: "Navi" },
-      { k: "Network", v: params.network },
-      { k: "Network fee (est.)", v: "—" },
-      { k: "Risk (heuristic)", v: "unknown" },
-      { k: "Outcome", v: `Supply ${params.amount} ${params.token} to Navi (preview).` },
-    ],
-    note:
-      "Navi supply from the assistant is not signed here yet. Use the Navi package flow when available. This is a preview only.",
-  };
-}
-
-function buildNaviWithdrawCard(params: {
-  amount: string;
-  token: string;
-  network: string;
-}): AssistantProposalCard {
-  const receipt = `n${params.token}`;
-  return {
-    title: "Navi withdraw",
-    label: `${params.amount} ${params.token}`,
-    source: { type: "package", name: "NAVI PROTOCOL" },
-    flows: [
-      {
-        direction: "in",
-        amount: params.amount,
-        token: params.token,
-        kind: "token",
-      },
-      {
-        direction: "out",
-        amount: "1",
-        token: receipt,
-        kind: "object",
-        objectName: "Navi supply receipt",
-      },
-    ],
-    details: [
-      { k: "Action", v: "Navi withdraw (redeem supply receipt)" },
-      { k: "Token", v: params.token },
-      { k: "Amount", v: `${params.amount} ${params.token}` },
-      { k: "Protocol", v: "Navi" },
-      { k: "Network", v: params.network },
-      { k: "Network fee (est.)", v: "—" },
-      { k: "Risk (heuristic)", v: "medium" },
-      { k: "Outcome", v: `Withdraw ${params.amount} ${params.token} from Navi (preview).` },
-    ],
-    note:
-      "Navi withdrawals from the assistant are not signed here yet. Use the Navi package flow when available. This is a preview only.",
-  };
-}
-
 /**
  * Deterministic structured UI blocks for the last user message.
  * Does not call the LLM; pairs with assistant inference for short prose.
@@ -150,7 +68,6 @@ export async function buildAssistantStructuredBlocks(
   const text = normalizeUserText(userText);
   const lower = text.toLowerCase();
   const env = networkSettingsService.getSuiEnvironment();
-  const network = networkDisplay(env);
 
   const account = walletService.getWalletAccount(accountId);
   if (!account || account.chain !== "sui") {
@@ -177,6 +94,15 @@ export async function buildAssistantStructuredBlocks(
         } else if (t === "swappable_tokens") {
           addendum =
             "\n\n[A Sui-only swappable-token list card is shown (app registry). Summarize briefly; do not read every line aloud.]";
+        } else if (t === "available_yield_pools") {
+          addendum =
+            "\n\n[A Navi yield pools card is shown with live APY when available. Summarize briefly; do not invent rates.]";
+        } else if (t === "yield_positions") {
+          addendum =
+            "\n\n[A Navi yield positions card is shown. Summarize briefly; do not claim positions the card does not list.]";
+        } else if (t === "navi_deposit_proposal" || t === "navi_withdraw_proposal") {
+          addendum =
+            "\n\n[A Navi transaction review card is shown. Add at most one short sentence; execution only after user approves.]";
         }
       }
       return { blocks, systemAddendum: addendum };
@@ -215,42 +141,6 @@ export async function buildAssistantStructuredBlocks(
     };
   }
 
-  const naviWithdraw = text.match(/\bwithdraw\s+([\d.]+)\s*(\w+)\s+from\s+navi\b/i);
-  if (naviWithdraw) {
-    const [, amt, tok] = naviWithdraw;
-    const proposalId = randomUUID();
-    return {
-      blocks: [
-        {
-          type: "navi_withdraw_proposal",
-          proposalId,
-          status: "pending",
-          card: buildNaviWithdrawCard({ amount: amt, token: tok.toUpperCase(), network }),
-        },
-      ],
-      systemAddendum:
-        "\n\n[A Navi withdraw preview card is shown. Acknowledge briefly; execution is not from this card yet.]",
-    };
-  }
-
-  const naviDeposit = text.match(/\bdeposit\s+([\d.]+)\s*(\w+)\s+(?:into|to)\s+navi\b/i);
-  if (naviDeposit) {
-    const [, amt, tok] = naviDeposit;
-    const proposalId = randomUUID();
-    return {
-      blocks: [
-        {
-          type: "navi_deposit_proposal",
-          proposalId,
-          status: "pending",
-          card: buildNaviDepositCard({ amount: amt, token: tok.toUpperCase(), network }),
-        },
-      ],
-      systemAddendum:
-        "\n\n[A Navi deposit preview card is shown. Acknowledge briefly; execution is not from this card yet.]",
-    };
-  }
-
   const portfolioRe =
     /\bportfolio\b|\bholdings\b|\bmy tokens\b|\bwhat assets\b|\bwhat do i have\b|\bshow my (tokens|balances)\b|\bportfolio worth\b|\bbalances?\b/i;
   if (portfolioRe.test(lower)) {
@@ -260,42 +150,6 @@ export async function buildAssistantStructuredBlocks(
       blocks: [block],
       systemAddendum:
         "\n\n[A portfolio card with live balances is shown. Summarize briefly; do not duplicate the token table.]",
-    };
-  }
-
-  const yieldPosRe =
-    /\byield positions?\b|\bdefi positions?\b|\bstaking positions?\b|\bwhere.*earning\b|\bnavi position/i;
-  if (yieldPosRe.test(lower)) {
-    return {
-      blocks: [
-        {
-          type: "yield_positions",
-          network,
-          positions: [],
-          emptyHint: "Live yield positions are not synced in the assistant yet. Check protocol apps for open positions.",
-        },
-      ],
-      systemAddendum:
-        "\n\n[An empty yield positions card is shown. Explain that live DeFi positions are not connected yet.]",
-    };
-  }
-
-  const poolsRe =
-    /\byield pools?\b|\bavailable pools?\b|\blending pools?\b|\bwhat pools\b|\bsupply apy\b|\bearn on\b/i;
-  if (poolsRe.test(lower)) {
-    return {
-      blocks: [
-        {
-          type: "available_yield_pools",
-          network,
-          protocolLabel: "NAVI PROTOCOL",
-          pools: [],
-          emptyHint:
-            "Pool APY and TVL feeds are not connected in the assistant yet. Open Navi or your protocol of choice for live rates.",
-        },
-      ],
-      systemAddendum:
-        "\n\n[An empty yield pools card is shown. Explain that live pool data is not wired yet — no fabricated APY or TVL.]",
     };
   }
 

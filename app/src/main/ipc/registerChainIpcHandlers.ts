@@ -6,6 +6,7 @@ import {
   chainAccountIdSchema,
   chainActivitySchema,
   chainConfirmTransferSchema,
+  chainExecuteNaviYieldSchema,
   chainExecuteSwapSchema,
   chainPrepareTransferSchema,
   chainSetNetworkSchema,
@@ -14,6 +15,8 @@ import {
   contactsListSchema,
   contactsUpdateSchema,
 } from "./schemas";
+import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import { suiNaviYieldService } from "../services/chains/sui/sui-navi-yield.service";
 import { chainFacadeService } from "../services/chains/chainFacadeService";
 import { networkSettingsService } from "../services/network/networkSettingsService";
 import { contactRepository } from "../persistence/repositories/contactRepository";
@@ -135,6 +138,24 @@ export function registerChainIpcHandlers() {
         proposalSnapshot: SwapProposalSnapshotV1;
       };
       const result = await chainFacadeService.executeAssistantSwap({ accountId, proposalSnapshot });
+      broadcastChainChanged();
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainExecuteNaviYield, async (_event, payload: unknown) => {
+    const parsed = chainExecuteNaviYieldSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid Navi yield execution request"));
+    }
+    try {
+      const { accountId, proposalSnapshot } = parsed.data as {
+        accountId: string;
+        proposalSnapshot: NaviYieldProposalSnapshotV1;
+      };
+      const result = await suiNaviYieldService.executeApprovedProposal({ accountId, proposalSnapshot });
       broadcastChainChanged();
       return ok(result);
     } catch (error) {

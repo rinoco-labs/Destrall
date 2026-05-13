@@ -20,7 +20,7 @@ import {
   WalletBubble,
   type ChatActionBubbleMessage,
 } from "./AssistantChatBubbles";
-import { desktopConfirmTransfer, desktopExecuteSwap, desktopPrepareTransfer } from "@/lib/desktopChain";
+import { desktopConfirmTransfer, desktopExecuteNaviYield, desktopExecuteSwap, desktopPrepareTransfer } from "@/lib/desktopChain";
 import { useWalletStore } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
 import {
@@ -165,13 +165,77 @@ export function AssistantStructuredMessageRenderer({
         return;
       }
 
-      if (p.type !== "send_proposal") {
-        await patchProposal(p.proposalId, {
-          status: "failed",
-          errorMessage:
-            "This action cannot be signed from the assistant yet. Use the matching screen in Destrall (Navi, etc.).",
-        });
-        await onReloadThread();
+      if (p.type === "navi_deposit_proposal" || p.type === "navi_withdraw_proposal") {
+        const snap = p.proposalSnapshot;
+        if (!snap) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Missing Navi proposal data. Ask again to prepare the transaction.",
+          });
+          return;
+        }
+        if (accountId !== snap.accountId) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage:
+              "This proposal was prepared for another account. Switch back to that account or dismiss the card.",
+          });
+          return;
+        }
+        const net = useNetworkStore.getState().network;
+        if (!net || net.activeEnvironment !== snap.suiEnvironment) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage:
+              "The selected network no longer matches this proposal. Prepare the transaction again on the correct network.",
+          });
+          return;
+        }
+        if (Date.now() > snap.expiresAtMs) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Proposal expired. Please prepare a new transaction.",
+          });
+          return;
+        }
+
+        await patchProposal(p.proposalId, { status: "executing", errorMessage: undefined });
+        try {
+          const result = await desktopExecuteNaviYield({ accountId, proposalSnapshot: snap });
+          await patchProposal(p.proposalId, {
+            status: "success",
+            digest: result.digest,
+            explorerUrl: result.explorerUrl,
+            errorMessage: undefined,
+          });
+          const verb = snap.kind === "deposit" ? "Deposit" : "Withdraw";
+          const resultBlock = serializeAssistantMessageMetadata([
+            {
+              type: "yield_execution_result",
+              title: `Navi ${verb} submitted`,
+              digest: result.digest,
+              explorerUrl: result.explorerUrl,
+              summary: `Navi ${verb.toLowerCase()} on Sui. Digest ${result.digest.slice(0, 10)}…`,
+              kind: snap.kind,
+            },
+          ]);
+          await desktopAssistantChatAddMessage({
+            accountId,
+            chatId,
+            role: "assistant",
+            content: `Navi ${verb.toLowerCase()} submitted.`,
+            metadata: resultBlock,
+          });
+          await onReloadThread();
+          void useWalletStore.getState().refreshWallets();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Navi transaction failed.";
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: msg,
+          });
+          await onReloadThread();
+        }
         return;
       }
 
@@ -427,6 +491,8 @@ function StructuredBlockView({
               protocol: p.protocol,
               asset: p.asset,
               supplied: p.supplied,
+              currentValue: p.currentValue,
+              accruedInterest: p.accruedInterest,
               apy: p.apy,
               valueUsd: p.valueUsd,
             })),
@@ -441,12 +507,14 @@ function StructuredBlockView({
             view: "pools",
             title: "Available yield pools",
             source: block.protocolLabel,
+            recommendationNote: block.recommendationNote,
             pools: block.pools.map((p) => ({
               protocol: p.protocol,
               asset: p.asset,
               apy: p.apy,
               tvlUsd: p.tvlUsd,
               utilization: p.utilization,
+              riskLabel: p.riskLabel,
             })),
             emptyHint: block.emptyHint,
           }}
@@ -504,6 +572,15 @@ function StructuredBlockView({
         />
       );
     case "swap_execution_result":
+      return (
+        <TransactionResultBubble
+          digest={block.digest}
+          title={block.title}
+          summary={block.summary}
+          explorerUrl={block.explorerUrl}
+        />
+      );
+    case "yield_execution_result":
       return (
         <TransactionResultBubble
           digest={block.digest}
