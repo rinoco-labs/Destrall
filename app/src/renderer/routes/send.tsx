@@ -198,8 +198,13 @@ function SendPage() {
                           </span>
                           <span className="font-medium truncate">{t.symbol}</span>
                         </span>
-                        <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                          {t.balanceFormatted}
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2 text-right">
+                          <span className="block">{t.balanceFormatted}</span>
+                          {t.usdValue ? (
+                            <span className="block text-[10px] tabular-nums text-muted-foreground/90">
+                              ≈ {t.usdValue}
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                     ))}
@@ -224,6 +229,9 @@ function SendPage() {
               {selected && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   Available: {selected.balanceFormatted} {selected.symbol}
+                  {selected.usdValue ? (
+                    <span className="tabular-nums"> · ≈ {selected.usdValue}</span>
+                  ) : null}
                 </p>
               )}
             </div>

@@ -36,6 +36,28 @@ function formatGenerated(date: Date) {
   return `${hrs}h ago`;
 }
 
+const usdTotalFmt = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+/** Sum `TokenBalanceView.usdValue` strings from {@link Intl.NumberFormat} en-US currency output. */
+function sumUsdValues(rows: { usdValue?: string }[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const b of rows) {
+    if (!b.usdValue) continue;
+    const v = Number.parseFloat(b.usdValue.replace(/[^0-9.-]/g, ""));
+    if (Number.isFinite(v)) {
+      sum += v;
+      n += 1;
+    }
+  }
+  return n > 0 ? sum : null;
+}
+
 function Home() {
   const [generatedAt, setGeneratedAt] = useState(() => new Date());
   const walletSnap = useWalletStore();
@@ -64,6 +86,10 @@ function Home() {
   const suiRow = balancesQuery.data?.find((b) => b.coinType.endsWith("::sui::SUI"));
   const otherTokens = balancesQuery.data?.filter((b) => !b.coinType.endsWith("::sui::SUI")) ?? [];
 
+  const rows = balancesQuery.data ?? [];
+  const totalUsd = useMemo(() => sumUsdValues(rows), [rows]);
+  const pricedCount = useMemo(() => rows.filter((b) => b.usdValue).length, [rows]);
+
   return (
     <AppShell active="home">
       <div className="text-center mb-6">
@@ -78,11 +104,19 @@ function Home() {
           </p>
         )}
         <p className="text-sm text-muted-foreground">Total balance</p>
-        <p className="text-5xl font-bold mt-1">—</p>
+        <p className="text-5xl font-bold mt-1 tabular-nums">
+          {balancesQuery.isLoading ? "…" : totalUsd != null ? usdTotalFmt.format(totalUsd) : "—"}
+        </p>
         <p className="text-xs text-muted-foreground mt-1">
           {balancesQuery.isLoading
             ? "Loading on-chain balances…"
-            : "USD pricing not configured — showing token amounts below."}
+            : network?.activeEnvironment === "devnet"
+              ? "USD estimates unavailable on Sui Devnet — token amounts below."
+              : totalUsd != null
+                ? `${pricedCount === rows.length ? "All" : `${pricedCount} of ${rows.length}`} assets priced via Aftermath.`
+                : rows.length > 0
+                  ? "No USD quote from Aftermath for these tokens — amounts below."
+                  : "USD value appears once you hold tokens with a listed price."}
         </p>
       </div>
 
@@ -165,7 +199,10 @@ function Home() {
             <p className="text-lg font-semibold mt-1">
               {b.balanceFormatted} {b.symbol}
             </p>
-            <p className="text-sm text-muted-foreground font-mono text-xs truncate">{b.coinType}</p>
+            {b.usdValue ? (
+              <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">≈ {b.usdValue}</p>
+            ) : null}
+            <p className="text-xs text-muted-foreground font-mono truncate">{b.coinType}</p>
           </div>
         ))}
       </div>

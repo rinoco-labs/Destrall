@@ -13,6 +13,7 @@ import { walletService } from "../../wallet/walletService";
 import { clearSuiClientCache, getSuiClientForEnvironment } from "./sui/sui-client.service";
 import { SuiTokenMetadataService } from "./sui/sui-token-metadata.service";
 import { fetchSuiBalancesForAddress } from "./sui/sui-balance.service";
+import { enrichSuiBalancesWithAftermathUsd } from "./sui/sui-aftermath-prices.service";
 import { fetchSuiActivityPage } from "./sui/sui-activity.service";
 import { SuiTransferService } from "./sui/sui-transfer.service";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
@@ -41,7 +42,8 @@ class ChainFacadeService {
     const env = networkSettingsService.getSuiEnvironment();
     const client = getSuiClientForEnvironment(env);
     const meta = new SuiTokenMetadataService(() => getSuiClientForEnvironment(env));
-    return fetchSuiBalancesForAddress(client, meta, account.address);
+    const rows = await fetchSuiBalancesForAddress(client, meta, account.address);
+    return enrichSuiBalancesWithAftermathUsd(env, rows);
   }
 
   async getActivityPage(accountId: string, cursor?: string | null): Promise<ChainActivityPage> {
@@ -125,7 +127,10 @@ class ChainFacadeService {
         if (balances.length) {
           lines.push("Token balances (formatted):");
           for (const b of balances.slice(0, 20)) {
-            lines.push(`- ${b.symbol}: ${b.balanceFormatted} (raw: ${b.balanceRaw}, type: ${b.coinType})`);
+            const usd = b.usdValue ? `, ~${b.usdValue}` : "";
+            lines.push(
+              `- ${b.symbol}: ${b.balanceFormatted}${usd} (raw: ${b.balanceRaw}, type: ${b.coinType})`,
+            );
           }
           if (balances.length > 20) {
             lines.push(`…and ${balances.length - 20} more tokens`);

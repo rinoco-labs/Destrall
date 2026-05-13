@@ -35,11 +35,11 @@ function portfolioFromBalances(
 
   let totalUsd: string | undefined;
   const priced = balances.filter((b) => b.usdValue != null && b.usdValue !== "");
-  if (priced.length === balances.length && balances.length > 0) {
+  if (priced.length > 0) {
     let sum = 0;
     let ok = true;
     for (const b of priced) {
-      const n = parseFloat((b.usdValue as string).replace(/[^0-9.-]/g, ""));
+      const n = Number.parseFloat((b.usdValue as string).replace(/[^0-9.-]/g, ""));
       if (Number.isNaN(n)) {
         ok = false;
         break;
