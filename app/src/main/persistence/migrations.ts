@@ -14,7 +14,33 @@ const migrations: Migration[] = [
       ensureWalletTables(db);
     },
   },
+  {
+    version: 2,
+    name: "llm_model_installs",
+    up: (db) => {
+      ensureLlmModelTables(db);
+    },
+  },
 ];
+
+export function ensureLlmModelTables(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS llm_model_installs (
+      model_id TEXT PRIMARY KEY,
+      installed INTEGER NOT NULL,
+      selected INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      local_path TEXT,
+      file_name TEXT,
+      source_repo TEXT NOT NULL,
+      size_bytes INTEGER,
+      download_progress INTEGER,
+      error_message TEXT,
+      installed_at INTEGER,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+  `);
+}
 
 export function ensureWalletTables(db: DatabaseSync) {
   db.exec(`
@@ -84,4 +110,5 @@ export function runMigrations(db: DatabaseSync) {
   }
 
   ensureWalletTables(db);
+  ensureLlmModelTables(db);
 }

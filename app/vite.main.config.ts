@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ["node:sqlite"],
+      external: ["node:sqlite", "node-llama-cpp"],
     },
   },
 });

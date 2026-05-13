@@ -6,6 +6,8 @@ import {
   RTL_LANGUAGES,
   type ResolvedTheme,
 } from "@/stores/settingsStore";
+import { isDestrallDesktop } from "@/lib/desktopWallet";
+import { useAiModelStore } from "@/stores/aiModelStore";
 
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === "undefined") return "dark";
@@ -23,12 +25,18 @@ function getSystemTheme(): ResolvedTheme {
  *
  * Renders nothing.
  */
-export function AppProviders() {
+export function AppProviders(): null {
   const { i18n: i18nInstance } = useTranslation();
   const theme = useSettingsStore((s) => s.theme);
   const language = useSettingsStore((s) => s.language);
   const hasHydrated = useSettingsStore((s) => s.hasHydrated);
   const setResolvedTheme = useSettingsStore((s) => s.setResolvedTheme);
+  const initializeModelState = useAiModelStore((s) => s.initializeModelState);
+
+  useEffect(() => {
+    if (!isDestrallDesktop()) return;
+    void initializeModelState();
+  }, [initializeModelState]);
 
   // Theme application
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { DestrallApi, RpcResult } from "../../shared/ipc";
+import type { DestrallApi } from "../../shared/ipc";
 
 declare global {
   interface Window {

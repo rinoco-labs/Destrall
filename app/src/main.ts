@@ -3,6 +3,8 @@ import path from "node:path";
 import started from "electron-squirrel-startup";
 import { getDatabase } from "./main/persistence/database";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
+import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
+import { aiModelMainService } from "./main/ai/aiModelMainService";
 
 if (started) {
   app.quit();
@@ -31,6 +33,10 @@ const createWindow = () => {
 app.whenReady().then(() => {
   getDatabase();
   registerWalletIpcHandlers();
+  registerAiModelIpcHandlers();
+  void aiModelMainService.restoreFromPersistence().catch((err) => {
+    console.error("[llm] Startup restore failed", err);
+  });
   createWindow();
 });
 

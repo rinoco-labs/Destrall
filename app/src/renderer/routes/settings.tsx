@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bell,
@@ -27,12 +27,12 @@ import {
   SUPPORTED_LANGUAGES,
   SUPPORTED_CURRENCIES,
   AUTO_LOCK_OPTIONS,
-  AI_MODELS,
   AI_PERSONALITIES,
   type AppLanguage,
   type AppCurrency,
   type AiPersonality,
 } from "@/stores/settingsStore";
+import { useAiModelStore } from "@/stores/aiModelStore";
 import { useWalletStore } from "@/stores/walletStore";
 import {
   AlertDialog,
@@ -108,7 +108,16 @@ function SettingsPage() {
   const setCurrency = useSettingsStore((s) => s.setCurrency);
   const autoLockMinutes = useSettingsStore((s) => s.autoLockMinutes);
   const setAutoLockMinutes = useSettingsStore((s) => s.setAutoLockMinutes);
-  const aiModel = useSettingsStore((s) => s.aiModel);
+  const refreshAiModels = useAiModelStore((s) => s.refreshFromMain);
+  const availableModels = useAiModelStore((s) => s.availableModels);
+  const selectedModelId = useAiModelStore((s) => s.selectedModelId);
+  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
+  const activeModelId = useAiModelStore((s) => s.activeModelId);
+
+  useEffect(() => {
+    void refreshAiModels();
+  }, [refreshAiModels]);
+
   const aiPersonality = useSettingsStore((s) => s.aiPersonality);
   const setAiPersonality = useSettingsStore((s) => s.setAiPersonality);
 
@@ -116,7 +125,10 @@ function SettingsPage() {
   const currencyLabel = currency;
   const autoLockLabel =
     AUTO_LOCK_OPTIONS.find((a) => a.value === autoLockMinutes)?.label ?? `${autoLockMinutes} min`;
-  const aiModelLabel = AI_MODELS.find((m) => m.id === aiModel)?.name ?? aiModel;
+  const selectedMeta = availableModels.find((m) => m.id === (activeModelId ?? selectedModelId));
+  const aiModelLabel = selectedMeta
+    ? `${selectedMeta.name}${isModelLoaded ? "" : " (not loaded)"}`
+    : t("settings.aiModelNone", "None selected");
   const personalityLabel =
     AI_PERSONALITIES.find((p) => p.id === aiPersonality)?.name ?? aiPersonality;
 

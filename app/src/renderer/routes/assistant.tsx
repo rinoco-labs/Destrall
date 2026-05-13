@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Plus,
@@ -36,6 +36,10 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { useWalletStore } from "@/stores/walletStore";
+import { useSettingsStore } from "@/stores/settingsStore";
+import { useAiModelStore } from "@/stores/aiModelStore";
+import { isDestrallDesktop } from "@/lib/desktopWallet";
 import {
   Dialog,
   DialogContent,
@@ -160,96 +164,7 @@ type Attachment = {
   isImage: boolean;
 };
 
-const samplePortfolio: WalletPayload = {
-  view: "portfolio",
-  title: "Portfolio",
-  network: "Mainnet",
-  totalUsd: "$182.47",
-  totalNative: "1.3306 SUI",
-  holdings: [
-    { symbol: "SUI", name: "Sui", amount: "1.3306", valueUsd: "$3.21", change24h: 1.4 },
-    { symbol: "DEEP", name: "DeepBook", amount: "40.0452", valueUsd: "$98.12", change24h: 4.8 },
-    { symbol: "WAL", name: "Walrus", amount: "30.5237", valueUsd: "$62.45", change24h: -2.1 },
-    { symbol: "USDC", name: "USD Coin", amount: "1.7043", valueUsd: "$1.70", change24h: 0 },
-  ],
-};
-
-const sampleYield: WalletPayload = {
-  view: "yield",
-  title: "Yield positions",
-  network: "Mainnet",
-  totalUsd: "$304.88",
-  positions: [
-    { protocol: "Navi", asset: "SUI", supplied: "2.106595 SUI", apy: "2.83%", valueUsd: "$5.08" },
-    { protocol: "Navi", asset: "USDC", supplied: "3.456203 nUSDC", apy: "4.21%", valueUsd: "$3.46" },
-    { protocol: "Navi", asset: "DEEP", supplied: "297.551531 DEEP", apy: "6.74%", valueUsd: "$296.34" },
-  ],
-};
-
-const samplePools: ProtocolPayload = {
-  view: "pools",
-  title: "Available yield pools",
-  source: "Navi Protocol",
-  pools: [
-    { protocol: "Navi", asset: "SUI", apy: "2.83%", tvlUsd: "$48.2M", utilization: "62%" },
-    { protocol: "Navi", asset: "USDC", apy: "4.21%", tvlUsd: "$31.7M", utilization: "78%" },
-    { protocol: "Navi", asset: "USDT", apy: "3.95%", tvlUsd: "$19.4M", utilization: "71%" },
-    { protocol: "Navi", asset: "DEEP", apy: "6.74%", tvlUsd: "$8.1M", utilization: "55%" },
-    { protocol: "Navi", asset: "WAL", apy: "5.12%", tvlUsd: "$4.6M", utilization: "44%" },
-  ],
-};
-
-const sampleCoins: ProtocolPayload = {
-  view: "coins",
-  title: "Swappable coins",
-  source: "Cetus DEX",
-  coins: [
-    { symbol: "SUI", name: "Sui", network: "Mainnet", liquidityUsd: "$120.4M" },
-    { symbol: "USDC", name: "USD Coin", network: "Mainnet", liquidityUsd: "$98.7M" },
-    { symbol: "USDT", name: "Tether", network: "Mainnet", liquidityUsd: "$42.1M" },
-    { symbol: "DEEP", name: "DeepBook", network: "Mainnet", liquidityUsd: "$15.9M" },
-    { symbol: "WAL", name: "Walrus", network: "Mainnet", liquidityUsd: "$7.3M" },
-    { symbol: "CETUS", name: "Cetus", network: "Mainnet", liquidityUsd: "$6.1M" },
-  ],
-};
-
-const initialMessages: Msg[] = [
-  { id: "1", kind: "user", text: "What is my portfolio?" },
-  { id: "2", kind: "wallet", payload: samplePortfolio },
-  { id: "1y", kind: "user", text: "Show my yield positions" },
-  { id: "2y", kind: "wallet", payload: sampleYield },
-  { id: "3", kind: "user", text: "Withdraw 0.1 SUI from Navi" },
-  {
-    id: "4",
-    kind: "action",
-    status: "pending",
-    title: "Navi withdraw",
-    label: "Navi withdraw · SUI",
-    source: { type: "package", name: "Navi Protocol" },
-    flows: [
-      { direction: "in", amount: "0.1", token: "SUI", kind: "token" },
-      {
-        direction: "out",
-        amount: "1",
-        token: "nSUI",
-        kind: "object",
-        objectName: "Navi supply receipt",
-      },
-    ],
-    details: [
-      { k: "Action", v: "Navi withdraw (redeem sup…" },
-      { k: "Token", v: "SUI" },
-      { k: "Amount", v: "0.1 SUI" },
-      { k: "Pool", v: "SUI · 2.83% APY" },
-      { k: "Risk (heuristic)", v: "medium" },
-      { k: "Protocol", v: "Navi" },
-      { k: "Network", v: "Mainnet" },
-      { k: "Network fee (est.)", v: "~0.05 SUI" },
-      { k: "Outcome", v: "You withdraw **0.1 SUI** fr…" },
-    ],
-    note: "Withdrawals depend on pool liquidity and protocol state; if the tx fails, try a smaller amount.",
-  },
-];
+const initialMessages: Msg[] = [];
 
 function UserBubble({ text, attachments }: { text: string; attachments?: Attachment[] }) {
   return (
@@ -304,12 +219,12 @@ function AssistantBubble({ text }: { text: string }) {
 type YieldSort = "apy-desc" | "apy-asc" | "value-desc" | "value-asc" | "protocol" | "asset";
 
 function parsePct(s: string) {
-  const n = parseFloat(s.replace(/[^0-9.\-]/g, ""));
+  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
   return isNaN(n) ? 0 : n;
 }
 function parseUsd(s?: string) {
   if (!s) return 0;
-  const n = parseFloat(s.replace(/[^0-9.\-]/g, ""));
+  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
   return isNaN(n) ? 0 : n;
 }
 
@@ -963,11 +878,7 @@ function ActionBubble({
 
 type ChatHistoryItem = { id: string; title: string; pinned: boolean };
 
-const initialHistory: ChatHistoryItem[] = [
-  { id: "h1", title: "Portfolio & Navi withdraw", pinned: true },
-  { id: "h2", title: "Available yield pools", pinned: false },
-  { id: "h3", title: "Swap SUI to USDC", pinned: false },
-];
+const initialHistory: ChatHistoryItem[] = [];
 
 function HistoryItem({
   item,
@@ -1041,7 +952,7 @@ function AssistantPage() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Msg[]>(initialMessages);
   const [history, setHistory] = useState<ChatHistoryItem[]>(initialHistory);
-  const [activeChatId, setActiveChatId] = useState<string>("h1");
+  const [activeChatId, setActiveChatId] = useState<string>("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1049,6 +960,23 @@ function AssistantPage() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+
+  const activeAccountId = useWalletStore((s) => s.activeAccountId);
+  const language = useSettingsStore((s) => s.language);
+  const aiPersonality = useSettingsStore((s) => s.aiPersonality);
+  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
+  const runtimeError = useAiModelStore((s) => s.runtimeError);
+  const selectedMeta = useAiModelStore((s) =>
+    s.availableModels.find((m) => m.id === (s.activeModelId ?? s.selectedModelId)),
+  );
+  const initializeModelState = useAiModelStore((s) => s.initializeModelState);
+  const sendMessage = useAiModelStore((s) => s.sendMessage);
+  const refreshAi = useAiModelStore((s) => s.refreshFromMain);
+  const [llmBusy, setLlmBusy] = useState(false);
+
+  useEffect(() => {
+    void initializeModelState();
+  }, [initializeModelState]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -1067,7 +995,6 @@ function AssistantPage() {
     return () => {
       attachments.forEach((a) => URL.revokeObjectURL(a.url));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateAction = (id: string, patch: Partial<Extract<Msg, { kind: "action" }>>) =>
@@ -1113,52 +1040,107 @@ function AssistantPage() {
     });
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = message.trim();
     if (!text && attachments.length === 0) return;
-    const lower = text.toLowerCase();
 
-    const isProtocolPools =
-      /\b(available|list|show|what)\b.*\b(yield|pool|pools|farms?)\b/.test(lower) ||
-      /\b(pools?|farms?)\b.*\b(available|list)\b/.test(lower);
-    const isProtocolCoins =
-      /\b(available|list|which|what|supported)\b.*\b(coins?|tokens?|assets?)\b.*\b(swap|trade)\b/.test(
-        lower
-      ) ||
-      /\b(swap|trade)\b.*\b(coins?|tokens?|assets?|pairs?)\b/.test(lower);
-    const isYieldPositions =
-      /\b(my|positions?)\b.*\b(yield|navi|supplied|earn)/.test(lower) ||
-      /\b(yield positions?|my positions?)\b/.test(lower);
-    const isPortfolio =
-      /\b(my )?(portfolio|balance|holdings?|wallet)\b/.test(lower) ||
-      /\bwhat (do )?i (own|hold|have)\b/.test(lower);
-
-    const reply: Msg = isProtocolPools
-      ? { id: crypto.randomUUID(), kind: "protocol", payload: samplePools }
-      : isProtocolCoins
-      ? { id: crypto.randomUUID(), kind: "protocol", payload: sampleCoins }
-      : isYieldPositions
-      ? { id: crypto.randomUUID(), kind: "wallet", payload: sampleYield }
-      : isPortfolio
-      ? { id: crypto.randomUUID(), kind: "wallet", payload: samplePortfolio }
-      : {
+    if (attachments.length > 0) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          kind: "user",
+          text,
+          attachments: attachments.length ? attachments : undefined,
+        },
+        {
           id: crypto.randomUUID(),
           kind: "assistant",
-          text: "I'm a simulated assistant. Connect a local model to enable real responses.",
-        };
+          text: "File attachments are not sent to the local model yet. Paste text or try again without attachments.",
+        },
+      ]);
+      setMessage("");
+      setAttachments([]);
+      return;
+    }
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        kind: "user",
-        text,
-        attachments: attachments.length ? attachments : undefined,
-      },
-      reply,
-    ]);
+    if (!isDestrallDesktop()) {
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "Open the Destrall desktop app to chat with the on-device model.",
+        },
+      ]);
+      setMessage("");
+      return;
+    }
+
+    if (!activeAccountId) {
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "No active wallet account. Unlock your wallet or add an account, then try again.",
+        },
+      ]);
+      setMessage("");
+      return;
+    }
+
+    if (!isModelLoaded) {
+      void refreshAi();
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "No local model is loaded. Use **Settings → AI Model** to download and load a model, then come back here.",
+        },
+      ]);
+      setMessage("");
+      return;
+    }
+
+    const prior = messages
+      .filter((m): m is Extract<Msg, { kind: "user" }> | Extract<Msg, { kind: "assistant" }> => {
+        return m.kind === "user" || m.kind === "assistant";
+      })
+      .map((m) =>
+        m.kind === "user"
+          ? ({ role: "user" as const, content: m.text })
+          : ({ role: "assistant" as const, content: m.text }),
+      );
+
+    const conversation = [...prior, { role: "user" as const, content: text }];
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), kind: "user", text }]);
     setMessage("");
-    setAttachments([]);
+    setLlmBusy(true);
+    try {
+      const reply = await sendMessage({
+        messages: conversation,
+        accountId: activeAccountId,
+        language,
+        personalityId: aiPersonality,
+      });
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "assistant", text: reply },
+      ]);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : "The model failed to respond.";
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "assistant", text: `**Error**\n${err}` },
+      ]);
+    } finally {
+      setLlmBusy(false);
+    }
   };
 
   const onDragEnter = (e: React.DragEvent) => {
@@ -1234,6 +1216,19 @@ function AssistantPage() {
             onDrop={onDrop}
           >
             <div ref={scrollRef} className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {isDestrallDesktop() && runtimeError ? (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {runtimeError}
+                </div>
+              ) : null}
+              {isDestrallDesktop() && !isModelLoaded ? (
+                <div className="rounded-xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+                  <span>Local model is not loaded.</span>
+                  <Link to="/settings" className="font-semibold text-brand hover:underline">
+                    Open Settings
+                  </Link>
+                </div>
+              ) : null}
               {messages.map((m) => {
                 if (m.kind === "user")
                   return (
@@ -1258,6 +1253,14 @@ function AssistantPage() {
                   />
                 );
               })}
+              {llmBusy ? (
+                <div className="flex justify-start">
+                  <div className="inline-flex items-center gap-2 rounded-3xl rounded-bl-lg border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating…
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {dragActive && (
@@ -1347,7 +1350,7 @@ function AssistantPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSend();
+                    void handleSend();
                   }
                 }}
                 onPaste={(e) => {
@@ -1371,7 +1374,8 @@ function AssistantPage() {
               </button>
               <button
                 type="button"
-                onClick={handleSend}
+                onClick={() => void handleSend()}
+                disabled={llmBusy}
                 aria-label="Send message"
                 className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-brand text-brand-foreground hover:opacity-90 transition shrink-0 mb-1"
               >
@@ -1379,7 +1383,9 @@ function AssistantPage() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              Using Qwen2.5 3B Instruct (Q4_K_M)
+              {selectedMeta
+                ? `${selectedMeta.name}${isModelLoaded ? " · loaded" : " · not loaded"}`
+                : "No model selected"}
             </p>
           </div>
         </div>

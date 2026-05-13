@@ -19,7 +19,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       walletSetupComplete: false,
       aiModelSetupComplete: false,
       onboardingComplete: false,
-      currentStep: null,
+      currentStep: null as string | null,
       setWalletSetupComplete: (walletSetupComplete) => set({ walletSetupComplete }),
       setAiModelSetupComplete: (aiModelSetupComplete) => set({ aiModelSetupComplete }),
       setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
@@ -29,7 +29,7 @@ export const useOnboardingStore = create<OnboardingState>()(
           walletSetupComplete: false,
           aiModelSetupComplete: false,
           onboardingComplete: false,
-          currentStep: null,
+          currentStep: null as string | null,
         }),
     }),
     {

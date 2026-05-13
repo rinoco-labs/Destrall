@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPCChannels, type DestrallApi, type WalletCreateRequest } from "./shared/ipc";
+import {
+  IPCChannels,
+  type AssistantChatRequest,
+  type DestrallApi,
+  type ModelProgressEvent,
+  type WalletCreateRequest,
+} from "./shared/ipc";
 
 const api: DestrallApi = {
   wallet: {
@@ -22,6 +28,25 @@ const api: DestrallApi = {
       ipcRenderer.invoke(IPCChannels.walletViewSeedPhrase, { password }),
     disconnect: () => ipcRenderer.invoke(IPCChannels.walletDisconnect),
     refresh: () => ipcRenderer.invoke(IPCChannels.walletRefresh),
+  },
+  llm: {
+    getState: () => ipcRenderer.invoke(IPCChannels.llmGetState),
+    installModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmInstallModel, modelId),
+    selectModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmSelectModel, modelId),
+    unloadModel: () => ipcRenderer.invoke(IPCChannels.llmUnloadModel),
+    deleteModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmDeleteModel, modelId),
+    cancelDownload: (modelId: string) =>
+      ipcRenderer.invoke(IPCChannels.llmCancelDownload, modelId),
+    assistantRuntime: () => ipcRenderer.invoke(IPCChannels.llmAssistantRuntime),
+    chat: (payload: AssistantChatRequest) => ipcRenderer.invoke(IPCChannels.llmChat, payload),
+    onModelProgress: (listener: (event: ModelProgressEvent) => void) => {
+      const channel = IPCChannels.llmModelProgress;
+      const wrapped = (_: unknown, data: ModelProgressEvent) => listener(data);
+      ipcRenderer.on(channel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(channel, wrapped);
+      };
+    },
   },
 };
 

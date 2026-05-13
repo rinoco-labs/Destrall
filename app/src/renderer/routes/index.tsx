@@ -18,6 +18,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { SelectModal } from "@/components/settings/SelectModal";
+import { Progress } from "@/components/ui/progress";
 import { useTheme } from "@/hooks/use-theme";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 import {
@@ -25,7 +26,8 @@ import {
   SUPPORTED_LANGUAGES,
   type AppLanguage,
 } from "@/stores/settingsStore";
-import { useAiStore } from "@/stores/aiStore";
+import { MODEL_CATALOG } from "../../ai/modelCatalog";
+import { useAiModelStore } from "@/stores/aiModelStore";
 import { useWalletStore } from "@/stores/walletStore";
 import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
 import { desktopPreviewMnemonic, isDestrallDesktop } from "@/lib/desktopWallet";
@@ -68,23 +70,6 @@ type Flow = "create" | "import";
 const STEP_ORDER: Step[] = ["phrase", "confirm-phrase", "password", "confirm", "created"];
 const IMPORT_STEP_ORDER: Step[] = ["import", "password", "confirm", "created"];
 
-const MODELS = [
-  {
-    id: "qwen",
-    tier: "Balanced",
-    name: "Qwen2.5 3B Instruct (Q4_K_M)",
-    size: "~2.0 GB",
-    description: "Strong instruction-following with moderate hardware requirements.",
-  },
-  {
-    id: "gemma",
-    tier: "High Quality",
-    name: "Gemma 4 E2B IT (Q4_0)",
-    size: "3.04 GB",
-    description: "Quality-focused model for deeper reasoning and planning.",
-  },
-];
-
 function Index() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -92,8 +77,14 @@ function Index() {
   const setOnboardingComplete = useOnboardingStore((s) => s.setOnboardingComplete);
   const setWalletSetupComplete = useOnboardingStore((s) => s.setWalletSetupComplete);
   const setAiSetupComplete = useOnboardingStore((s) => s.setAiModelSetupComplete);
-  const aiMarkInstalled = useAiStore((s) => s.markInstalled);
-  const aiSelect = useAiStore((s) => s.selectModel);
+  const downloadModel = useAiModelStore((s) => s.downloadModel);
+  const refreshAiModels = useAiModelStore((s) => s.refreshFromMain);
+  const selectModelPreference = useAiModelStore((s) => s.selectModel);
+  const downloadedModelIds = useAiModelStore((s) => s.downloadedModelIds);
+  const selectedModelId = useAiModelStore((s) => s.selectedModelId);
+  const downloadingModelId = useAiModelStore((s) => s.downloadingModelId);
+  const downloadProgress = useAiModelStore((s) => s.downloadProgress);
+  const modelSetupError = useAiModelStore((s) => s.lastError);
   const createWallet = useWalletStore((s) => s.createWallet);
   const importWallet = useWalletStore((s) => s.importWallet);
 
@@ -112,9 +103,6 @@ function Index() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdAddress, setCreatedAddress] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [downloaded, setDownloaded] = useState<Record<string, boolean>>({});
   const [confirmWordA, setConfirmWordA] = useState("");
   const [confirmWordB, setConfirmWordB] = useState("");
   const [languageModalOpen, setLanguageModalOpen] = useState(false);
@@ -137,6 +125,16 @@ function Index() {
     const second = Math.min(creationWords.length - 1, 8);
     return [first, second] as const;
   }, [creationWords.length]);
+
+  const downloadedMap = useMemo(
+    () => Object.fromEntries(MODEL_CATALOG.map((m) => [m.id, downloadedModelIds.includes(m.id)])),
+    [downloadedModelIds],
+  );
+
+  useEffect(() => {
+    if (step !== "model" || !isDestrallDesktop()) return;
+    void refreshAiModels();
+  }, [step, refreshAiModels]);
 
   useEffect(() => {
     if (flow !== "create" || creationMnemonic != null || previewError) return;
@@ -234,21 +232,28 @@ function Index() {
     void commitWallet();
   };
 
-  const startDownload = (id: string) => {
-    setDownloading(id);
-    setTimeout(() => {
-      setDownloading(null);
-      setDownloaded((d) => ({ ...d, [id]: true }));
-      setSelectedModel(id);
-      aiMarkInstalled(id);
-      aiSelect(id);
-    }, 1400);
+  const startDownload = async (id: string) => {
+    if (!isDestrallDesktop()) return;
+    try {
+      await downloadModel(id);
+    } catch {
+      /* error visible via modelSetupError */
+    }
   };
 
   const finish = () => {
     setAiSetupComplete(true);
     setOnboardingComplete(true);
     navigate({ to: "/home" });
+  };
+
+  const skipModelSetup = () => {
+    void refreshAiModels();
+    finish();
+  };
+
+  const setSelectedModel = (id: string) => {
+    void selectModelPreference(id);
   };
 
   const phraseConfirmed =
@@ -330,12 +335,15 @@ function Index() {
           submitError={submitError}
           isSubmitting={isSubmitting}
           createdAddress={createdAddress}
-          selectedModel={selectedModel}
-          downloading={downloading}
-          downloaded={downloaded}
+          selectedModel={selectedModelId}
+          downloading={downloadingModelId}
+          downloaded={downloadedMap}
+          downloadProgress={downloadProgress}
+          modelSetupError={modelSetupError}
           startDownload={startDownload}
           setSelectedModel={setSelectedModel}
           finish={finish}
+          skipModelSetup={skipModelSetup}
           t={t}
         />
       </div>
@@ -401,9 +409,12 @@ type RightPanelProps = {
   selectedModel: string | null;
   downloading: string | null;
   downloaded: Record<string, boolean>;
-  startDownload: (id: string) => void;
+  downloadProgress: number;
+  modelSetupError: string | null;
+  startDownload: (id: string) => void | Promise<void>;
   setSelectedModel: (id: string) => void;
   finish: () => void;
+  skipModelSetup: () => void;
   t: ReturnType<typeof useTranslation>["t"];
 };
 
@@ -448,9 +459,12 @@ function RightPanel(props: RightPanelProps) {
     selectedModel,
     downloading,
     downloaded,
+    downloadProgress,
+    modelSetupError,
     startDownload,
     setSelectedModel,
     finish,
+    skipModelSetup,
     t,
   } = props;
 
@@ -554,9 +568,12 @@ function RightPanel(props: RightPanelProps) {
           selected={selectedModel}
           downloading={downloading}
           downloaded={downloaded}
+          downloadProgress={downloadProgress}
+          modelSetupError={modelSetupError}
           onDownload={startDownload}
           onSelect={setSelectedModel}
           onContinue={finish}
+          onSkip={skipModelSetup}
           onBack={() => setStep("created")}
         />
       )}
@@ -980,21 +997,44 @@ function ModelStep({
   selected,
   downloading,
   downloaded,
+  downloadProgress,
+  modelSetupError,
   onDownload,
   onSelect,
   onContinue,
+  onSkip,
   onBack,
 }: {
   selected: string | null;
   downloading: string | null;
   downloaded: Record<string, boolean>;
-  onDownload: (id: string) => void;
+  downloadProgress: number;
+  modelSetupError: string | null;
+  onDownload: (id: string) => void | Promise<void>;
   onSelect: (id: string) => void;
   onContinue: () => void;
+  onSkip: () => void;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
-  const ready = selected && downloaded[selected];
+  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
+  const activeModelId = useAiModelStore((s) => s.activeModelId);
+
+  const tierLabel = (c: (typeof MODEL_CATALOG)[number]["category"]) =>
+    c === "lightweight" ? "Lightweight" : c === "balanced" ? "Balanced" : "High quality";
+
+  const sizeLabel = (bytes?: number) => {
+    if (!bytes) return "";
+    if (bytes >= 1024 ** 3) return `~${(bytes / 1024 ** 3).toFixed(2)} GB`;
+    return `~${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  };
+
+  const ready =
+    !!selected &&
+    !!downloaded[selected] &&
+    isModelLoaded &&
+    activeModelId === selected;
+
   return (
     <>
       <button
@@ -1012,20 +1052,39 @@ function ModelStep({
         {t("onboarding.chooseModelDesc")}
       </p>
 
-      <div className="mt-6 space-y-5">
-        {MODELS.map((m) => {
+      {modelSetupError ? (
+        <p className="mt-4 text-sm text-destructive max-w-md" role="alert">
+          {modelSetupError}
+        </p>
+      ) : null}
+
+      {downloading ? (
+        <div className="mt-4 w-full max-w-md space-y-2">
+          <p className="text-xs text-muted-foreground">Downloading model… {downloadProgress}%</p>
+          <Progress value={downloadProgress} className="h-2" />
+        </div>
+      ) : null}
+
+      <div className="mt-6 space-y-5 w-full max-w-md">
+        {MODEL_CATALOG.map((m) => {
           const isDl = downloading === m.id;
           const isReady = downloaded[m.id];
           const isSelected = selected === m.id;
           return (
             <div key={m.id}>
               <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                {m.tier}
+                {tierLabel(m.category)}
               </p>
               <button
                 type="button"
-                onClick={() => (isReady ? onSelect(m.id) : onDownload(m.id))}
-                disabled={isDl}
+                onClick={() => {
+                  if (isReady) {
+                    onSelect(m.id);
+                  } else {
+                    void onDownload(m.id);
+                  }
+                }}
+                disabled={!!downloading && !isDl}
                 className={`w-full flex items-center gap-4 rounded-2xl border px-5 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-brand/40 ${
                   isSelected
                     ? "border-brand bg-secondary/60"
@@ -1033,13 +1092,11 @@ function ModelStep({
                 }`}
               >
                 <span className="flex-1">
-                  <span className="flex items-baseline gap-2">
+                  <span className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-base font-semibold text-foreground">{m.name}</span>
-                    <span className="text-xs text-muted-foreground">{m.size}</span>
+                    <span className="text-xs text-muted-foreground">{sizeLabel(m.sizeBytes)}</span>
                   </span>
-                  <span className="block text-sm text-muted-foreground mt-0.5">
-                    {m.description}
-                  </span>
+                  <span className="block text-sm text-muted-foreground mt-0.5">{m.description}</span>
                 </span>
                 <span className="shrink-0 w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-foreground">
                   {isDl ? (
@@ -1056,9 +1113,18 @@ function ModelStep({
         })}
       </div>
 
-      <PrimaryButton onClick={onContinue} disabled={!ready}>
-        {t("onboarding.continueToHome")} <ArrowRight className="w-4 h-4" />
-      </PrimaryButton>
+      <div className="mt-8 w-full max-w-md space-y-3">
+        <PrimaryButton onClick={onContinue} disabled={!ready}>
+          {t("onboarding.continueToHome")} <ArrowRight className="w-4 h-4" />
+        </PrimaryButton>
+        <button
+          type="button"
+          onClick={onSkip}
+          className="w-full text-sm font-medium text-muted-foreground hover:text-foreground transition py-2"
+        >
+          Skip for now
+        </button>
+      </div>
     </>
   );
 }
