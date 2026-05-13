@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
-import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { isValidSuiAddress, normalizeSuiAddress } from "@mysten/sui/utils";
 import { IPCChannels, type ChainNetworkStatePayload } from "../../shared/ipc";
 import {
   chainAccountIdSchema,
@@ -154,6 +154,9 @@ export function registerChainIpcHandlers() {
         } catch {
           return fail(new Error("Invalid Sui address."));
         }
+        if (!isValidSuiAddress(address)) {
+          return fail(new Error("Invalid Sui address."));
+        }
       }
       const row = contactRepository.create({
         name: parsed.data.name.trim(),
@@ -190,6 +193,9 @@ export function registerChainIpcHandlers() {
         try {
           address = normalizeSuiAddress(address);
         } catch {
+          return fail(new Error("Invalid Sui address."));
+        }
+        if (!isValidSuiAddress(address)) {
           return fail(new Error("Invalid Sui address."));
         }
       }

@@ -121,6 +121,13 @@ const api: DestrallApi = {
     getActive: (accountId: string) => ipcRenderer.invoke(IPCChannels.assistantChatGetActive, accountId),
     setActive: (payload: { accountId: string; chatId: string | null }) =>
       ipcRenderer.invoke(IPCChannels.assistantChatSetActive, payload),
+    resolveContactDisambiguation: (payload: {
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      disambiguationId: string;
+      pickedMatchId: string;
+    }) => ipcRenderer.invoke(IPCChannels.assistantChatResolveContactDisambiguation, payload),
   },
 };
 

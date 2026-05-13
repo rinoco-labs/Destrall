@@ -4,6 +4,7 @@ import type { AssistantChatRow, AssistantMessageRow } from "../../shared/assista
 import type { RpcResult } from "../../shared/ipc";
 import { IPCChannels } from "../../shared/ipc";
 import { chatHistoryService } from "../services/assistant/chatHistoryService";
+import { resolveAssistantContactDisambiguation } from "../services/assistant/assistantContactDisambiguationService";
 
 function ok<T>(data: T): RpcResult<T> {
   return { ok: true, data };
@@ -182,6 +183,30 @@ export function registerAssistantChatIpcHandlers() {
         .parse(payload);
       chatHistoryService.setActiveChatId(parsed.accountId, parsed.chatId);
       return ok({ ok: true as const });
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  const resolveContactDisambiguationSchema = z.object({
+    accountId: z.string().min(1),
+    chatId: z.string().min(1),
+    messageId: z.string().min(1),
+    disambiguationId: z.string().min(1),
+    pickedMatchId: z.string().min(1),
+  });
+
+  ipcMain.handle(IPCChannels.assistantChatResolveContactDisambiguation, async (_e, payload: unknown) => {
+    try {
+      const parsed = resolveContactDisambiguationSchema.parse(payload);
+      const row = await resolveAssistantContactDisambiguation({
+        accountId: parsed.accountId,
+        chatId: parsed.chatId,
+        messageId: parsed.messageId,
+        disambiguationId: parsed.disambiguationId,
+        pickedMatchId: parsed.pickedMatchId,
+      });
+      return ok(row as AssistantMessageRow);
     } catch (error) {
       return fail(error);
     }

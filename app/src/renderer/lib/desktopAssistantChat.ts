@@ -107,3 +107,13 @@ export async function desktopAssistantChatSetActive(payload: {
 }): Promise<void> {
   await unwrap(api().assistantChat.setActive(payload));
 }
+
+export async function desktopAssistantResolveContactDisambiguation(payload: {
+  accountId: string;
+  chatId: string;
+  messageId: string;
+  disambiguationId: string;
+  pickedMatchId: string;
+}): Promise<AssistantMessageRow> {
+  return unwrap(api().assistantChat.resolveContactDisambiguation(payload));
+}

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { normalizeSuiAddress } from "@mysten/sui/utils";
 import type { SuiChainEnvironment } from "../../../config/chains/sui";
 import type { TokenBalanceView } from "../../../types/blockchain";
 import type {
   AssistantProposalCard,
   AssistantStructuredResult,
 } from "../../../assistant/assistantResultTypes";
+import { tryRouteAssistantToolCall } from "../../../assistant/assistantToolRouter";
+import { executePackageAction } from "../../../packages/runtime/actionExecutor";
 import { chainFacadeService } from "../chains/chainFacadeService";
 import { networkSettingsService } from "../network/networkSettingsService";
 import { walletService } from "../../wallet/walletService";
@@ -16,22 +17,6 @@ function networkDisplay(env: SuiChainEnvironment): string {
 
 function normalizeUserText(s: string): string {
   return s.trim().replace(/\s+/g, " ");
-}
-
-function tryParseSuiRecipient(fragment: string): string | null {
-  const t = fragment.trim();
-  if (!t) return null;
-  try {
-    return normalizeSuiAddress(t);
-  } catch {
-    return null;
-  }
-}
-
-function resolveCoinType(balances: TokenBalanceView[], symbol: string): string | null {
-  const u = symbol.toUpperCase();
-  const row = balances.find((b) => b.symbol.toUpperCase() === u);
-  return row?.coinType ?? null;
 }
 
 function portfolioFromBalances(
@@ -188,94 +173,6 @@ function buildNaviWithdrawCard(params: {
   };
 }
 
-async function tryBuildSendProposal(
-  accountId: string,
-  amount: string,
-  symbol: string,
-  recipientRaw: string,
-  network: string,
-): Promise<AssistantStructuredResult[]> {
-  const balances = await chainFacadeService.getTokenBalances(accountId);
-  const coinType = resolveCoinType(balances, symbol);
-  if (!coinType) {
-    return [
-      {
-        type: "error",
-        message: `Could not resolve "${symbol}" to a coin in this wallet. Check the symbol and try again.`,
-        code: "unknown_token",
-      },
-    ];
-  }
-
-  const recipient = tryParseSuiRecipient(recipientRaw);
-  if (!recipient) {
-    return [
-      {
-        type: "error",
-        message: "Recipient does not look like a valid Sui address.",
-        code: "invalid_recipient",
-      },
-    ];
-  }
-
-  try {
-    const account = walletService.getWalletAccount(accountId);
-    if (!account || account.chain !== "sui") {
-      return [{ type: "error", message: "Only Sui accounts support sends from the assistant." }];
-    }
-    const prep = await chainFacadeService.prepareTransfer({
-      accountId,
-      recipient,
-      coinType,
-      amountDisplay: amount,
-    });
-    const { summary } = prep;
-    const card: AssistantProposalCard = {
-      title: "Send",
-      label: `Send ${summary.amountFormatted} ${summary.symbol}`,
-      source: { type: "core", name: "Destrall Wallet" },
-      flows: [
-        {
-          direction: "out",
-          amount: summary.amountFormatted,
-          token: summary.symbol,
-          kind: "token",
-        },
-      ],
-      details: [
-        { k: "Action", v: "Sui transfer" },
-        { k: "Token", v: summary.symbol },
-        { k: "Amount", v: `${summary.amountFormatted} ${summary.symbol}` },
-        { k: "To", v: summary.recipient },
-        { k: "Network", v: network },
-        {
-          k: "Network fee (est.)",
-          v: `~${summary.gasBudgetFormatted} SUI`,
-        },
-        {
-          k: "Outcome",
-          v: `Send ${summary.amountFormatted} ${summary.symbol} to the recipient address.`,
-        },
-      ],
-      note: "Confirm only if the recipient and amount are correct. Unlock your wallet before approving.",
-    };
-
-    const proposalId = randomUUID();
-    return [
-      {
-        type: "send_proposal",
-        proposalId,
-        status: "pending",
-        transferRequestId: prep.transferRequestId,
-        card,
-      },
-    ];
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Could not prepare transfer.";
-    return [{ type: "error", message: msg, code: "prepare_transfer_failed" }];
-  }
-}
-
 /**
  * Deterministic structured UI blocks for the last user message.
  * Does not call the LLM; pairs with assistant inference for short prose.
@@ -294,16 +191,26 @@ export async function buildAssistantStructuredBlocks(
     return { blocks: [], systemAddendum: "" };
   }
 
-  const sendMatch = text.match(/\bsend\s+([\d.]+)\s+(\w+)\s+to\s+(.+)/i);
-  if (sendMatch) {
-    const [, amt, sym, destRaw] = sendMatch;
-    const dest = destRaw.trim().replace(/[.,!?;:]+$/, "");
-    const blocks = await tryBuildSendProposal(accountId, amt, sym, dest, network);
-    const addendum =
-      blocks.length > 0
-        ? "\n\n[A structured send proposal card is shown. Add at most one short sentence; do not repeat addresses or amounts.]"
-        : "";
-    return { blocks, systemAddendum: addendum };
+  const routed = tryRouteAssistantToolCall(text);
+  if (routed) {
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: routed.namespacedName,
+        input: routed.input,
+      });
+      const addendum =
+        blocks.length > 0
+          ? "\n\n[A structured send or contact-choice card is shown. Add at most one short sentence; do not repeat addresses or amounts.]"
+          : "";
+      return { blocks, systemAddendum: addendum };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Action failed.";
+      return {
+        blocks: [{ type: "error", message: msg, code: "action_failed" }],
+        systemAddendum: "",
+      };
+    }
   }
 
   const naviWithdraw = text.match(/\bwithdraw\s+([\d.]+)\s*(\w+)\s+from\s+navi\b/i);

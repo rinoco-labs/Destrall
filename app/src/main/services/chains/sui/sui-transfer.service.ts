@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Transaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { isValidSuiAddress, normalizeSuiAddress } from "@mysten/sui/utils";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { SUI_COIN_TYPE } from "../../../../config/chains/sui";
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
@@ -152,6 +152,9 @@ export class SuiTransferService {
     } catch {
       throw new Error("Invalid Sui address.");
     }
+    if (!isValidSuiAddress(recipient)) {
+      throw new Error("Invalid Sui address.");
+    }
 
     if (recipient === params.senderAddress) {
       throw new Error("Cannot send to the same address.");
@@ -217,6 +220,11 @@ export class SuiTransferService {
       throw new Error("Transfer session expired or invalid. Please prepare again.");
     }
     pending.delete(params.transferRequestId);
+
+    const currentEnv = this.getEnvironment();
+    if (p.environment !== currentEnv) {
+      throw new Error("Network changed since this transfer was prepared. Prepare again on the correct network.");
+    }
 
     const mnemonic = walletSession.getMnemonic();
     if (!mnemonic) {

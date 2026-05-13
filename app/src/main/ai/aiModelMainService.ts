@@ -12,8 +12,8 @@ import {
 } from "../../shared/ipc";
 import { getDatabase } from "../persistence/database";
 import { LlmModelRepository, type PersistedLlmModelInstall } from "../persistence/repositories/llmModelRepository";
-import { chainFacadeService } from "../services/chains/chainFacadeService";
 import { buildAssistantStructuredBlocks } from "../services/assistant/assistantStructuredOrchestrator";
+import { buildAssistantContextDocument } from "../../assistant/assistantContextBuilder";
 import { assistantInferenceService, type ChatTurnMessage } from "./assistantInferenceService";
 import { modelDownloadService } from "./modelDownloadService";
 import { modelRuntimeService } from "./modelRuntimeService";
@@ -379,7 +379,7 @@ export class AiModelMainService {
 
   async buildWalletContext(accountId: string): Promise<string> {
     try {
-      return await chainFacadeService.buildAssistantWalletContext(accountId);
+      return await buildAssistantContextDocument(accountId);
     } catch {
       return "";
     }

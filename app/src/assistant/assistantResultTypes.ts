@@ -3,6 +3,8 @@
  * The UI maps each entry to rich cards — not plain markdown.
  */
 
+import type { SendProposalSnapshot } from "../packages/runtime/transactionProposalTypes";
+
 export type AssistantAssetFlow = {
   direction: "out" | "in";
   amount: string;
@@ -87,7 +89,21 @@ export type SendProposalResult = {
   errorMessage?: string;
   digest?: string;
   explorerUrl?: string | null;
+  /** Filled when a named contact matched; shown on the card. */
+  recipientDisplayName?: string;
+  /** Re-validated on approve so account/network drift cannot execute a stale proposal. */
+  proposalSnapshot?: SendProposalSnapshot;
   card: AssistantProposalCard;
+};
+
+/** User must pick one contact / account when multiple names match. */
+export type ContactDisambiguationResult = {
+  type: "contact_disambiguation";
+  disambiguationId: string;
+  token: string;
+  amount: string;
+  originalRecipientQuery: string;
+  matches: Array<{ id: string; name: string; address: string }>;
 };
 
 export type SwapProposalResult = {
@@ -140,6 +156,7 @@ export type AssistantStructuredResult =
   | AvailableYieldPoolsResult
   | SwappableTokensResult
   | SendProposalResult
+  | ContactDisambiguationResult
   | SwapProposalResult
   | NaviDepositProposalResult
   | NaviWithdrawProposalResult

@@ -7,6 +7,7 @@ import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers"
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
 import { aiModelMainService } from "./main/ai/aiModelMainService";
+import { registerCorePackages } from "./packages/runtime/registerCorePackages";
 
 if (started) {
   app.quit();
@@ -34,6 +35,7 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   getDatabase();
+  registerCorePackages();
   registerChainIpcHandlers();
   registerWalletIpcHandlers();
   registerAiModelIpcHandlers();

@@ -181,6 +181,13 @@ export type DestrallApi = {
     }) => Promise<RpcResult<AssistantMessageRow>>;
     getActive: (accountId: string) => Promise<RpcResult<string | null>>;
     setActive: (payload: { accountId: string; chatId: string | null }) => Promise<RpcResult<{ ok: true }>>;
+    resolveContactDisambiguation: (payload: {
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      disambiguationId: string;
+      pickedMatchId: string;
+    }) => Promise<RpcResult<AssistantMessageRow>>;
   };
 };
 
@@ -231,4 +238,5 @@ export const IPCChannels = {
     assistantChatUpdateMessage: "assistant-chat:update-message",
   assistantChatGetActive: "assistant-chat:get-active",
   assistantChatSetActive: "assistant-chat:set-active",
+  assistantChatResolveContactDisambiguation: "assistant-chat:resolve-contact-disambiguation",
 } as const;

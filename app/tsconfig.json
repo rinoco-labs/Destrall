@@ -14,7 +14,8 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["src/renderer/*"]
+      "@/*": ["src/renderer/*"],
+      "@packages/*": ["src/packages/*"]
     }
   },
   "include": ["src/**/*", "forge.env.d.ts"]
