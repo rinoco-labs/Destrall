@@ -5,7 +5,10 @@ import type {
   AssistantProposalCard,
   AssistantStructuredResult,
 } from "../../../assistant/assistantResultTypes";
-import { tryRouteAssistantToolCall } from "../../../assistant/assistantToolRouter";
+import {
+  classifySwapUserMessage,
+  tryRouteAssistantToolCall,
+} from "../../../assistant/assistantToolRouter";
 import { executePackageAction } from "../../../packages/runtime/actionExecutor";
 import { chainFacadeService } from "../chains/chainFacadeService";
 import { networkSettingsService } from "../network/networkSettingsService";
@@ -53,43 +56,6 @@ function portfolioFromBalances(
     network,
     totalUsd,
     assets,
-  };
-}
-
-function buildSwapCard(params: {
-  amount: string;
-  fromSymbol: string;
-  toSymbol: string;
-  network: string;
-}): AssistantProposalCard {
-  return {
-    title: "Swap proposal",
-    label: `Swap ${params.amount} ${params.fromSymbol} → ${params.toSymbol}`,
-    source: { type: "package", name: "CETUS DEX" },
-    flows: [
-      {
-        direction: "out",
-        amount: params.amount,
-        token: params.fromSymbol,
-        kind: "token",
-      },
-      {
-        direction: "in",
-        amount: params.toSymbol,
-        token: params.toSymbol,
-        kind: "token",
-      },
-    ],
-    details: [
-      { k: "Action", v: "Token swap (preview)" },
-      { k: "From", v: `${params.amount} ${params.fromSymbol}` },
-      { k: "To", v: params.toSymbol },
-      { k: "Network", v: params.network },
-      { k: "Network fee (est.)", v: "—" },
-      { k: "Outcome", v: `Exchange ${params.amount} ${params.fromSymbol} for ${params.toSymbol} via DEX routing.` },
-    ],
-    note:
-      "Swaps from the assistant are not executed here yet. Use the in-app swap flow to sign. This card is a structured preview only.",
   };
 }
 
@@ -199,10 +165,20 @@ export async function buildAssistantStructuredBlocks(
         namespacedName: routed.namespacedName,
         input: routed.input,
       });
-      const addendum =
-        blocks.length > 0
-          ? "\n\n[A structured send or contact-choice card is shown. Add at most one short sentence; do not repeat addresses or amounts.]"
-          : "";
+      let addendum = "";
+      if (blocks.length > 0) {
+        const t = blocks[0]?.type;
+        if (t === "send_proposal" || t === "contact_disambiguation") {
+          addendum =
+            "\n\n[A structured send or contact-choice card is shown. Add at most one short sentence; do not repeat addresses or amounts.]";
+        } else if (t === "swap_proposal") {
+          addendum =
+            "\n\n[A swap review card is shown. Add at most one short sentence; do not repeat quoted amounts or routes.]";
+        } else if (t === "swappable_tokens") {
+          addendum =
+            "\n\n[A swappable tokens card is shown. Summarize briefly; do not read the full list aloud.]";
+        }
+      }
       return { blocks, systemAddendum: addendum };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Action failed.";
@@ -211,6 +187,32 @@ export async function buildAssistantStructuredBlocks(
         systemAddendum: "",
       };
     }
+  }
+
+  const swapGap = classifySwapUserMessage(text);
+  if (swapGap === "missing_to") {
+    return {
+      blocks: [
+        {
+          type: "error",
+          message: "What token do you want to receive?",
+          code: "swap_incomplete",
+        },
+      ],
+      systemAddendum: "",
+    };
+  }
+  if (swapGap === "missing_amount" || swapGap === "incomplete") {
+    return {
+      blocks: [
+        {
+          type: "error",
+          message: "I need an amount, from token, and to token to prepare a swap.",
+          code: "swap_incomplete",
+        },
+      ],
+      systemAddendum: "",
+    };
   }
 
   const naviWithdraw = text.match(/\bwithdraw\s+([\d.]+)\s*(\w+)\s+from\s+navi\b/i);
@@ -246,29 +248,6 @@ export async function buildAssistantStructuredBlocks(
       ],
       systemAddendum:
         "\n\n[A Navi deposit preview card is shown. Acknowledge briefly; execution is not from this card yet.]",
-    };
-  }
-
-  const swapMatch = text.match(/\bswap\s+([\d.]+)\s+(\w+)\s+(?:to|for)\s+(\w+)\b/i);
-  if (swapMatch) {
-    const [, amt, from, to] = swapMatch;
-    const proposalId = randomUUID();
-    return {
-      blocks: [
-        {
-          type: "swap_proposal",
-          proposalId,
-          status: "pending",
-          card: buildSwapCard({
-            amount: amt,
-            fromSymbol: from.toUpperCase(),
-            toSymbol: to.toUpperCase(),
-            network,
-          }),
-        },
-      ],
-      systemAddendum:
-        "\n\n[A swap preview card is shown. Acknowledge briefly; signing swaps from the assistant is not enabled yet.]",
     };
   }
 
@@ -317,34 +296,6 @@ export async function buildAssistantStructuredBlocks(
       ],
       systemAddendum:
         "\n\n[An empty yield pools card is shown. Explain that live pool data is not wired yet — no fabricated APY or TVL.]",
-    };
-  }
-
-  const swapTokensRe =
-    /\bwhat tokens can i trade\b|\bavailable tokens\b|\bwhat can i swap\b|\bswappable\b|\btradable tokens\b/i;
-  if (swapTokensRe.test(lower)) {
-    const balances = await chainFacadeService.getTokenBalances(accountId);
-    const coins = balances.map((b) => ({
-      symbol: b.symbol,
-      name: b.symbol,
-      network,
-      coinType: b.coinType,
-    }));
-    return {
-      blocks: [
-        {
-          type: "swappable_tokens",
-          network,
-          routerLabel: "Wallet tokens (router not connected)",
-          coins,
-          emptyHint:
-            coins.length === 0
-              ? "No token balances to show. Fund this account or adjust the query."
-              : "DEX router token lists are not connected yet — showing symbols from your wallet only (no liquidity quotes).",
-        },
-      ],
-      systemAddendum:
-        "\n\n[A swappable tokens card lists wallet tokens only; explain that router/DEX liquidity data is not connected yet.]",
     };
   }
 

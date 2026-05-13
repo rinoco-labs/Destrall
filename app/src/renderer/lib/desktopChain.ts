@@ -1,11 +1,12 @@
+import type { ChainNetworkStatePayload, RpcResult } from "../../shared/ipc";
 import type {
   ChainActivityPage,
-  ChainNetworkStatePayload,
-  RpcResult,
+  SwapExecuteResult,
   TokenBalanceView,
   TransferExecuteResult,
   TransferPrepareResult,
-} from "../../shared/ipc";
+} from "../../types/blockchain";
+import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import type { ChainId } from "../../shared/wallet/types";
 import type { SuiChainEnvironment } from "../../config/chains/sui";
 
@@ -57,6 +58,13 @@ export async function desktopPrepareTransfer(payload: {
 
 export async function desktopConfirmTransfer(transferRequestId: string): Promise<TransferExecuteResult> {
   return unwrap(api().chain.confirmTransfer({ transferRequestId }));
+}
+
+export async function desktopExecuteSwap(payload: {
+  accountId: string;
+  proposalSnapshot: SwapProposalSnapshotV1;
+}): Promise<SwapExecuteResult> {
+  return unwrap(api().chain.executeSwap(payload));
 }
 
 export function subscribeChainNetworkChanged(listener: () => void): () => void {

@@ -3,6 +3,7 @@ import { actionRegistry } from "./actionRegistry";
 import { createActionContext } from "./actionContext";
 import type {
   CorePackageManifest,
+  ManifestFieldType,
   PackageActionHandler,
   PackagePermission,
   RuntimeActionExecutionRequest,
@@ -10,12 +11,14 @@ import type {
 import { actionSupportsPermissions, validateManifestPermissions } from "./actionPermissions";
 import { walletSendPackageManifest } from "../core/wallet/send.manifest";
 import { contactsPackageManifest } from "../core/contacts/contacts.manifest";
+import { swapAftermathPackageManifest } from "../core/swap/swap.manifest";
 
 const handlers = new Map<string, PackageActionHandler>();
 
 const CORE_MANIFESTS: Record<string, CorePackageManifest> = {
   [walletSendPackageManifest.id]: walletSendPackageManifest,
   [contactsPackageManifest.id]: contactsPackageManifest,
+  [swapAftermathPackageManifest.id]: swapAftermathPackageManifest,
 };
 
 /** Core packages grant their declared permissions in full (installer UX can narrow later). */
@@ -27,11 +30,32 @@ export function registerActionHandler(namespacedName: string, handler: PackageAc
   handlers.set(namespacedName, handler);
 }
 
-function validateInputSchema(input: Record<string, unknown>, schema: Record<string, string>) {
+function validateInputSchema(input: Record<string, unknown>, schema: Record<string, ManifestFieldType>) {
   for (const [key, typ] of Object.entries(schema)) {
-    if (typ !== "string") continue;
-    if (!(key in input) || typeof input[key] !== "string") {
-      throw new Error(`Missing or invalid field: ${key}`);
+    if (typ === "string") {
+      if (!(key in input) || typeof input[key] !== "string") {
+        throw new Error(`Missing or invalid field: ${key}`);
+      }
+      continue;
+    }
+    if (typ === "optional_string") {
+      if (!(key in input) || input[key] === undefined || input[key] === null) continue;
+      if (typeof input[key] !== "string") {
+        throw new Error(`Invalid field: ${key}`);
+      }
+      continue;
+    }
+    if (typ === "number") {
+      if (!(key in input) || typeof input[key] !== "number" || !Number.isFinite(input[key])) {
+        throw new Error(`Missing or invalid field: ${key}`);
+      }
+      continue;
+    }
+    if (typ === "optional_number") {
+      if (!(key in input) || input[key] === undefined || input[key] === null) continue;
+      if (typeof input[key] !== "number" || !Number.isFinite(input[key])) {
+        throw new Error(`Invalid field: ${key}`);
+      }
     }
   }
 }

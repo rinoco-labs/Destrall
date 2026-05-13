@@ -4,12 +4,14 @@ import type { WalletAccount, WalletStatusSnapshot, ChainId } from "./wallet/type
 import type {
   ChainActivityPage,
   NetworkUiSnapshot,
+  SwapExecuteResult,
   TokenBalanceView,
   TransferExecuteResult,
   TransferPrepareResult,
 } from "../types/blockchain";
 import type { SuiChainEnvironment } from "../config/chains/sui";
 import type { SupportedChainDescriptor } from "../config/networks";
+import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -131,6 +133,10 @@ export type DestrallApi = {
     confirmTransfer: (payload: {
       transferRequestId: string;
     }) => Promise<RpcResult<TransferExecuteResult>>;
+    executeSwap: (payload: {
+      accountId: string;
+      proposalSnapshot: SwapProposalSnapshotV1;
+    }) => Promise<RpcResult<SwapExecuteResult>>;
     onNetworkChanged: (listener: () => void) => () => void;
   };
   contacts: {
@@ -211,6 +217,7 @@ export const IPCChannels = {
   chainGetActivity: "chain:get-activity",
   chainPrepareTransfer: "chain:prepare-transfer",
   chainConfirmTransfer: "chain:confirm-transfer",
+  chainExecuteSwap: "chain:execute-swap",
   chainNetworkChanged: "chain:network-changed",
   contactsList: "contacts:list",
   contactsCreate: "contacts:create",

@@ -2,6 +2,7 @@ import type { ChainId } from "../../../shared/wallet/types";
 import type {
   ChainActivityPage,
   NetworkUiSnapshot,
+  SwapExecuteResult,
   TokenBalanceView,
   TransferExecuteResult,
   TransferPrepareResult,
@@ -14,6 +15,8 @@ import { SuiTokenMetadataService } from "./sui/sui-token-metadata.service";
 import { fetchSuiBalancesForAddress } from "./sui/sui-balance.service";
 import { fetchSuiActivityPage } from "./sui/sui-activity.service";
 import { SuiTransferService } from "./sui/sui-transfer.service";
+import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
+import { suiAftermathSwapService } from "./sui/sui-aftermath-swap.service";
 
 class ChainFacadeService {
   getNetworkSnapshot(): NetworkUiSnapshot {
@@ -89,6 +92,18 @@ class ChainFacadeService {
 
   async confirmTransfer(params: { transferRequestId: string }): Promise<TransferExecuteResult> {
     return this.getTransferService().confirmTransfer(params);
+  }
+
+  async executeAssistantSwap(params: {
+    accountId: string;
+    proposalSnapshot: SwapProposalSnapshotV1;
+  }): Promise<SwapExecuteResult> {
+    const account = walletService.getWalletAccount(params.accountId);
+    if (!account || account.chain !== "sui") {
+      throw new Error("Only Sui accounts support swaps.");
+    }
+    const result = await suiAftermathSwapService.executePreparedSwap(params.proposalSnapshot);
+    return { digest: result.digest, explorerUrl: result.explorerUrl };
   }
 
   async buildAssistantWalletContext(accountId: string): Promise<string> {

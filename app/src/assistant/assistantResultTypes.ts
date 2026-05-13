@@ -4,6 +4,7 @@
  */
 
 import type { SendProposalSnapshot } from "../packages/runtime/transactionProposalTypes";
+import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 
 export type AssistantAssetFlow = {
   direction: "out" | "in";
@@ -76,7 +77,10 @@ export type SwappableTokensResult = {
     name: string;
     network?: string;
     liquidityUsd?: string;
+    routerStatus?: string;
     coinType?: string;
+    decimals?: number;
+    iconUrl?: string;
   }>;
   emptyHint?: string;
 };
@@ -113,7 +117,17 @@ export type SwapProposalResult = {
   errorMessage?: string;
   digest?: string;
   explorerUrl?: string | null;
+  /** Persisted for reload + execution validation (no secrets). */
+  proposalSnapshot?: SwapProposalSnapshotV1;
   card: AssistantProposalCard;
+};
+
+export type SwapExecutionResultResult = {
+  type: "swap_execution_result";
+  title: string;
+  digest: string;
+  explorerUrl?: string | null;
+  summary: string;
 };
 
 export type NaviDepositProposalResult = {
@@ -161,6 +175,7 @@ export type AssistantStructuredResult =
   | NaviDepositProposalResult
   | NaviWithdrawProposalResult
   | TransactionResultResult
+  | SwapExecutionResultResult
   | AssistantErrorResult;
 
 export type AssistantMessageMetadataV1 = {

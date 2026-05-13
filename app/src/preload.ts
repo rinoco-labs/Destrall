@@ -46,6 +46,7 @@ const api: DestrallApi = {
     }) => ipcRenderer.invoke(IPCChannels.chainPrepareTransfer, payload),
     confirmTransfer: (payload: { transferRequestId: string }) =>
       ipcRenderer.invoke(IPCChannels.chainConfirmTransfer, payload),
+    executeSwap: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteSwap, payload),
     onNetworkChanged: (listener: () => void) => {
       const channel = IPCChannels.chainNetworkChanged;
       const wrapped = () => listener();

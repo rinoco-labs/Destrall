@@ -19,13 +19,16 @@ export type PackagePermission =
   | "storage:read"
   | "storage:write";
 
+/** Manifest field kinds validated before invoking a handler (Zod may refine further in-package). */
+export type ManifestFieldType = "string" | "optional_string" | "number" | "optional_number";
+
 export type PackageActionManifestEntry = {
   name: string;
   description: string;
   type: DeclaredActionType;
   requiresConfirmation: boolean;
-  /** Loose schema map for validation (field name → primitive type name). */
-  inputSchema: Record<string, string>;
+  /** Field name → validation kind. */
+  inputSchema: Record<string, ManifestFieldType>;
   permissions?: PackagePermission[];
 };
 
@@ -45,7 +48,7 @@ export type RuntimeActionDescriptor = {
   description: string;
   type: DeclaredActionType;
   requiresConfirmation: boolean;
-  inputSchema: Record<string, string>;
+  inputSchema: Record<string, ManifestFieldType>;
   requiredPermissions: PackagePermission[];
 };
 

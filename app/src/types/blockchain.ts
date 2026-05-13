@@ -59,3 +59,8 @@ export type TransferExecuteResult = {
   digest: string;
   explorerUrl: string | null;
 };
+
+export type SwapExecuteResult = {
+  digest: string;
+  explorerUrl: string | null;
+};

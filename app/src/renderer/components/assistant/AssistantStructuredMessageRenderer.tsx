@@ -20,7 +20,7 @@ import {
   WalletBubble,
   type ChatActionBubbleMessage,
 } from "./AssistantChatBubbles";
-import { desktopConfirmTransfer, desktopPrepareTransfer } from "@/lib/desktopChain";
+import { desktopConfirmTransfer, desktopExecuteSwap, desktopPrepareTransfer } from "@/lib/desktopChain";
 import { useWalletStore } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
 import {
@@ -93,11 +93,83 @@ export function AssistantStructuredMessageRenderer({
 
   const handleApprove = useCallback(
     async (p: SendProposalResult | SwapProposalResult | NaviDepositProposalResult | NaviWithdrawProposalResult) => {
+      if (p.type === "swap_proposal") {
+        const snap = p.proposalSnapshot;
+        if (!snap) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Missing swap proposal data. Ask again to prepare the swap.",
+          });
+          return;
+        }
+        if (accountId !== snap.accountId) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage:
+              "This swap was prepared for another account. Switch back to that account or dismiss the card.",
+          });
+          return;
+        }
+        const net = useNetworkStore.getState().network;
+        if (!net || net.activeEnvironment !== snap.suiEnvironment) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage:
+              "The selected network no longer matches this proposal. Prepare the swap again on the correct network.",
+          });
+          return;
+        }
+        if (Date.now() > snap.quoteExpiresAtMs) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Quote expired. Please request a new quote.",
+          });
+          return;
+        }
+
+        await patchProposal(p.proposalId, { status: "executing", errorMessage: undefined });
+        try {
+          const result = await desktopExecuteSwap({ accountId, proposalSnapshot: snap });
+          await patchProposal(p.proposalId, {
+            status: "success",
+            digest: result.digest,
+            explorerUrl: result.explorerUrl,
+            errorMessage: undefined,
+          });
+          const resultBlock = serializeAssistantMessageMetadata([
+            {
+              type: "swap_execution_result",
+              title: "Swap submitted",
+              digest: result.digest,
+              explorerUrl: result.explorerUrl,
+              summary: `Swap submitted on Sui. Digest ${result.digest.slice(0, 10)}…`,
+            },
+          ]);
+          await desktopAssistantChatAddMessage({
+            accountId,
+            chatId,
+            role: "assistant",
+            content: "Swap submitted.",
+            metadata: resultBlock,
+          });
+          await onReloadThread();
+          void useWalletStore.getState().refreshWallets();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Swap transaction failed.";
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: msg,
+          });
+          await onReloadThread();
+        }
+        return;
+      }
+
       if (p.type !== "send_proposal") {
         await patchProposal(p.proposalId, {
           status: "failed",
           errorMessage:
-            "This action cannot be signed from the assistant yet. Use the matching screen in Destrall (swap, Navi, etc.).",
+            "This action cannot be signed from the assistant yet. Use the matching screen in Destrall (Navi, etc.).",
         });
         await onReloadThread();
         return;
@@ -190,7 +262,7 @@ export function AssistantStructuredMessageRenderer({
         accountId,
         chatId,
         role: "assistant",
-        content: "Send proposal dismissed. Nothing was submitted on-chain.",
+        content: "Proposal dismissed. Nothing was submitted on-chain.",
         metadata: null,
       });
       await onReloadThread();
@@ -392,6 +464,10 @@ function StructuredBlockView({
               name: c.name,
               network: c.network,
               liquidityUsd: c.liquidityUsd,
+              routerStatus: c.routerStatus,
+              coinType: c.coinType,
+              decimals: c.decimals,
+              iconUrl: c.iconUrl,
             })),
             emptyHint: block.emptyHint,
           }}
@@ -419,6 +495,15 @@ function StructuredBlockView({
         />
       );
     case "transaction_result":
+      return (
+        <TransactionResultBubble
+          digest={block.digest}
+          title={block.title}
+          summary={block.summary}
+          explorerUrl={block.explorerUrl}
+        />
+      );
+    case "swap_execution_result":
       return (
         <TransactionResultBubble
           digest={block.digest}

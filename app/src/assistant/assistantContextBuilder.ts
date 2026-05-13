@@ -50,7 +50,7 @@ export async function buildAssistantContextDocument(accountId: string): Promise<
 
   const descriptors = actionRegistry.listForAssistant();
   if (descriptors.length) {
-    lines.push("Registered package actions (prepare-only for transfers):");
+    lines.push("Registered package actions (transfers and swaps are prepare-first; user must approve cards to execute):");
     for (const d of descriptors) {
       lines.push(`- ${d.namespacedName}: ${d.description}`);
     }

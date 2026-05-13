@@ -1,20 +1,67 @@
-import { PREPARE_SEND_ACTION_NAME } from "./assistantFunctionSchemas";
+import {
+  LIST_SWAPPABLE_TOKENS_ACTION_NAME,
+  PREPARE_SEND_ACTION_NAME,
+  PREPARE_SWAP_ACTION_NAME,
+} from "./assistantFunctionSchemas";
 
 export type RoutedAssistantToolCall = {
   namespacedName: string;
   input: Record<string, unknown>;
 };
 
+export type SwapUserMessageClass = "ok" | "list_query" | "missing_to" | "missing_amount" | "incomplete";
+
 function normalizeUserText(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
+const LIST_TOKENS_RE =
+  /\b(what tokens are available to swap|what tokens can i swap|what can i trade|show swappable tokens|show me the tokens i can trade|list aftermath tokens|available tokens to swap|swappable tokens|tokens available to swap)\b/i;
+
 /**
- * Deterministic planner: maps natural send phrasing → prepare_send tool args.
+ * Classify swap-related user text for follow-up prompts (no LLM).
+ */
+export function classifySwapUserMessage(text: string): SwapUserMessageClass {
+  const t = normalizeUserText(text);
+  const lower = t.toLowerCase();
+
+  if (LIST_TOKENS_RE.test(lower)) {
+    return "list_query";
+  }
+
+  if (!/\b(?:swap|trade|convert)\b/i.test(lower)) {
+    return "ok";
+  }
+
+  const full = /\b(?:swap|convert|trade)\s+([\d.,]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)\b/i.test(
+    t,
+  );
+
+  if (full) {
+    return "ok";
+  }
+
+  if (/\btrade\s+\w+\s+for\s+\w+\b/i.test(t) && !/\btrade\s+[\d.,]+\s+\w+\s+for\s+/i.test(t)) {
+    return "missing_amount";
+  }
+
+  if (
+    /\b(?:swap|convert|trade)\s+[\d.,]+\s+\w+\s*$/i.test(t) &&
+    !/\b(?:to|for|into)\s+\w+/i.test(t)
+  ) {
+    return "missing_to";
+  }
+
+  return "incomplete";
+}
+
+/**
+ * Deterministic planner: maps natural phrasing → package tool args.
  * When no pattern matches, returns null (caller may still run the LLM with tool schemas only).
  */
 export function tryRouteAssistantToolCall(userText: string): RoutedAssistantToolCall | null {
   const text = normalizeUserText(userText);
+  const lower = text.toLowerCase();
 
   const sendTo = text.match(/\b(?:send|transfer)\s+([\d.,]+)\s+(\w+)\s+to\s+(.+)/i);
   if (sendTo) {
@@ -59,5 +106,34 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
     };
   }
 
+  if (LIST_TOKENS_RE.test(lower)) {
+    const q =
+      text.match(/\b(?:for|matching|like|named)\s+["']?([\w.]+)["']?$/i)?.[1] ??
+      text.match(/\babout\s+(\w+)\s+tokens?\b/i)?.[1];
+    return {
+      namespacedName: LIST_SWAPPABLE_TOKENS_ACTION_NAME,
+      input: q ? { query: q } : {},
+    };
+  }
+
+  const swapTrade = text.match(
+    /\b(?:swap|convert|trade)\s+([\d.,]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)\b/i,
+  );
+  if (swapTrade) {
+    const [, amt, from, to] = swapTrade;
+    return {
+      namespacedName: PREPARE_SWAP_ACTION_NAME,
+      input: { fromToken: from, toToken: to, amount: amt },
+    };
+  }
+
   return null;
+}
+
+/**
+ * True when the user is asking about swapping but did not give amount + both tokens.
+ */
+export function isIncompleteSwapAsk(userText: string): boolean {
+  const c = classifySwapUserMessage(userText);
+  return c !== "ok" && c !== "list_query";
 }

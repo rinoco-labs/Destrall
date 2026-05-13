@@ -1,5 +1,6 @@
 import { registerWalletSendPackage } from "../core/wallet/send.package";
 import { registerContactsPackage } from "../core/contacts/contacts.package";
+import { registerSwapAftermathPackage } from "../core/swap/swap.package";
 
 let registered = false;
 
@@ -9,4 +10,5 @@ export function registerCorePackages() {
   registered = true;
   registerWalletSendPackage();
   registerContactsPackage();
+  registerSwapAftermathPackage();
 }

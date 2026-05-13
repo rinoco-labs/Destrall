@@ -1,10 +1,12 @@
 import { BrowserWindow, ipcMain } from "electron";
 import { isValidSuiAddress, normalizeSuiAddress } from "@mysten/sui/utils";
 import { IPCChannels, type ChainNetworkStatePayload } from "../../shared/ipc";
+import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import {
   chainAccountIdSchema,
   chainActivitySchema,
   chainConfirmTransferSchema,
+  chainExecuteSwapSchema,
   chainPrepareTransferSchema,
   chainSetNetworkSchema,
   contactsCreateSchema,
@@ -98,7 +100,11 @@ export function registerChainIpcHandlers() {
       return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid transfer request"));
     }
     try {
-      return ok(await chainFacadeService.prepareTransfer(parsed.data));
+      return ok(
+        await chainFacadeService.prepareTransfer(
+          parsed.data as { accountId: string; recipient: string; coinType: string; amountDisplay: string },
+        ),
+      );
     } catch (error) {
       return fail(error);
     }
@@ -110,7 +116,25 @@ export function registerChainIpcHandlers() {
       return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid confirm request"));
     }
     try {
-      const result = await chainFacadeService.confirmTransfer(parsed.data);
+      const result = await chainFacadeService.confirmTransfer(parsed.data as { transferRequestId: string });
+      broadcastChainChanged();
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainExecuteSwap, async (_event, payload: unknown) => {
+    const parsed = chainExecuteSwapSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid swap execution request"));
+    }
+    try {
+      const { accountId, proposalSnapshot } = parsed.data as {
+        accountId: string;
+        proposalSnapshot: SwapProposalSnapshotV1;
+      };
+      const result = await chainFacadeService.executeAssistantSwap({ accountId, proposalSnapshot });
       broadcastChainChanged();
       return ok(result);
     } catch (error) {

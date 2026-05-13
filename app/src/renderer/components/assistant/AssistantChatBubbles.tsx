@@ -87,6 +87,11 @@ export type ProtocolCoin = {
   name: string;
   network?: string;
   liquidityUsd?: string;
+  /** Swap list: whether Aftermath lists this coin type (not on-chain liquidity). */
+  routerStatus?: string;
+  coinType?: string;
+  decimals?: number;
+  iconUrl?: string;
 };
 
 export type ProtocolPayload =
@@ -463,12 +468,25 @@ function CoinRow({ c }: { c: ProtocolCoin }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold truncate">{c.name}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground font-mono truncate">
           {c.symbol}
           {c.network && <> · {c.network}</>}
+          {c.coinType && (
+            <>
+              {" "}
+              · {c.coinType.length > 36 ? `${c.coinType.slice(0, 18)}…${c.coinType.slice(-10)}` : c.coinType}
+            </>
+          )}
         </p>
       </div>
-      {c.liquidityUsd ? (
+      {c.routerStatus ? (
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Router
+          </p>
+          <p className="text-sm font-semibold">{c.routerStatus}</p>
+        </div>
+      ) : c.liquidityUsd ? (
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             Liquidity
