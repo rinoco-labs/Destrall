@@ -32,7 +32,13 @@ export async function listSwappableTokensAction(
 
   const account = ctx.wallet.getActiveAccount();
   if (!account || account.chain !== "sui") {
-    return [{ type: "error", message: "Only Sui accounts support swaps from the assistant.", code: "unsupported_chain" }];
+    return [
+      {
+        type: "error",
+        message: "Swap destinations are only listed for Sui right now. Switch to a Sui account to see them.",
+        code: "unsupported_chain",
+      },
+    ];
   }
 
   const net = ctx.network.getActiveNetwork();
@@ -40,70 +46,55 @@ export async function listSwappableTokensAction(
     return [{ type: "error", message: "Swaps are not supported on Devnet.", code: "unsupported_network" }];
   }
 
-  try {
-    const supported = await fetchAftermathSupportedCoinTypes(net.environment);
-    const supportedSet = new Set(supported);
+  const q = parsed.data.query?.trim().toLowerCase() ?? "";
 
-    const q = parsed.data.query?.trim().toLowerCase() ?? "";
+  const base = getSwappableTokens("sui");
+  const coins: SwappableTokenView[] = [];
 
-    const base = getSwappableTokens("sui");
-    const coins: SwappableTokenView[] = [];
-
-    for (const row of base) {
-      try {
-        const enriched = await enrichTokenMetadata("sui", row, net.environment);
-        if (q) {
-          const hay = `${enriched.symbol} ${enriched.name} ${enriched.coinType}`.toLowerCase();
-          if (!hay.includes(q)) continue;
-        }
+  for (const row of base) {
+    try {
+      const enriched = await enrichTokenMetadata("sui", row, net.environment);
+      if (q) {
+        const hay = `${enriched.symbol} ${enriched.name} ${enriched.coinType}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      coins.push({
+        symbol: enriched.symbol,
+        name: enriched.name,
+        coinType: enriched.coinType,
+        decimals: enriched.decimals,
+        iconUrl: enriched.iconUrl,
+        network: net.displayName,
+      });
+    } catch {
+      if (!q || row.symbol.toLowerCase().includes(q) || row.name.toLowerCase().includes(q)) {
         coins.push({
-          symbol: enriched.symbol,
-          name: enriched.name,
-          coinType: enriched.coinType,
-          decimals: enriched.decimals,
-          iconUrl: enriched.iconUrl,
+          symbol: row.symbol,
+          name: row.name,
+          coinType: row.coinType,
           network: net.displayName,
-          routerStatus: supportedSet.has(normalizeSuiCoinType(enriched.coinType))
-            ? "Supported"
-            : "Not listed",
         });
-      } catch {
-        if (!q || row.symbol.toLowerCase().includes(q) || row.name.toLowerCase().includes(q)) {
-          coins.push({
-            symbol: row.symbol,
-            name: row.name,
-            coinType: row.coinType,
-            network: net.displayName,
-            routerStatus: supportedSet.has(normalizeSuiCoinType(row.coinType))
-              ? "Supported"
-              : "Not listed",
-          });
-        }
       }
     }
-
-    return [
-      {
-        type: "swappable_tokens",
-        network: net.displayName,
-        routerLabel: "Destrall · Aftermath",
-        coins: coins.map((c) => ({
-          symbol: c.symbol,
-          name: c.name ?? c.symbol,
-          network: c.network,
-          liquidityUsd: c.liquidityUsd,
-          routerStatus: c.routerStatus,
-          coinType: c.coinType,
-          decimals: c.decimals,
-          iconUrl: c.iconUrl,
-        })),
-        emptyHint: coins.length ? undefined : "No tokens matched that search.",
-      },
-    ];
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Could not load swappable tokens.";
-    return [{ type: "error", message: msg, code: "aftermath_tokens_failed" }];
   }
+
+  return [
+    {
+      type: "swappable_tokens",
+      network: net.displayName,
+      routerLabel: "Destrall registry · Sui only",
+      coins: coins.map((c) => ({
+        symbol: c.symbol,
+        name: c.name ?? c.symbol,
+        network: c.network,
+        liquidityUsd: c.liquidityUsd,
+        coinType: c.coinType,
+        decimals: c.decimals,
+        iconUrl: c.iconUrl,
+      })),
+      emptyHint: coins.length ? undefined : "No tokens matched that search.",
+    },
+  ];
 }
 
 export async function prepareSwapAction(

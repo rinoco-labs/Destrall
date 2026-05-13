@@ -9,7 +9,8 @@ export const swapAftermathPackageManifest: CorePackageManifest = {
   actions: [
     {
       name: "list_swappable_tokens",
-      description: "List tokens available to swap through Aftermath Router.",
+      description:
+        "List Sui destination tokens the app supports for swaps (Destrall registry). Solana and other chains are not listed yet.",
       type: "read_state",
       requiresConfirmation: false,
       inputSchema: {

@@ -457,7 +457,7 @@ function StructuredBlockView({
         <ProtocolBubble
           payload={{
             view: "coins",
-            title: "Swappable coins",
+            title: "Tokens you can swap to (Sui)",
             source: block.routerLabel,
             coins: block.coins.map((c) => ({
               symbol: c.symbol,

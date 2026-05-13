@@ -176,7 +176,7 @@ export async function buildAssistantStructuredBlocks(
             "\n\n[A swap review card is shown. Add at most one short sentence; do not repeat quoted amounts or routes.]";
         } else if (t === "swappable_tokens") {
           addendum =
-            "\n\n[A swappable tokens card is shown. Summarize briefly; do not read the full list aloud.]";
+            "\n\n[A Sui-only swappable-token list card is shown (app registry). Summarize briefly; do not read every line aloud.]";
         }
       }
       return { blocks, systemAddendum: addendum };

@@ -38,14 +38,14 @@ export const prepareSendFunctionSchema = {
 export const listSwappableTokensFunctionSchema = {
   name: LIST_SWAPPABLE_TOKENS_ACTION_NAME,
   description:
-    "List tokens that can be traded through the Aftermath Smart Order Router on the active Sui network. Read-only.",
+    "List Sui tokens the user can receive in a swap (Destrall swappable-token registry). Only Sui is supported for this list today. Read-only.",
   parameters: {
     type: "object",
     additionalProperties: false,
     properties: {
       query: {
         type: "string",
-        description: "Optional filter string to narrow supported coins (symbol fragment).",
+        description: "Optional filter (symbol, name, or coin-type fragment).",
       },
     },
     required: [],
