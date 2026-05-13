@@ -87,6 +87,16 @@ export async function desktopAssistantChatAddMessage(payload: {
   return unwrap(api().assistantChat.addMessage(payload));
 }
 
+export async function desktopAssistantChatUpdateMessage(payload: {
+  accountId: string;
+  chatId: string;
+  messageId: string;
+  content?: string;
+  metadata?: string | null;
+}): Promise<AssistantMessageRow> {
+  return unwrap(api().assistantChat.updateMessage(payload));
+}
+
 export async function desktopAssistantChatGetActive(accountId: string): Promise<string | null> {
   return unwrap(api().assistantChat.getActive(accountId));
 }

@@ -8,25 +8,7 @@ import {
   Paperclip,
   Send,
   ImageIcon,
-  ArrowDownCircle,
   Loader2,
-  CheckCircle2,
-  ShieldAlert,
-  Copy,
-  ExternalLink,
-  Info,
-  Package,
-  Shield,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Box,
-  Wallet,
-  TrendingUp,
-  Coins,
-  PieChart,
-  Sprout,
-  Network,
-  ArrowLeftRight,
   MoreHorizontal,
   Pin,
   PinOff,
@@ -38,7 +20,6 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useWalletStore } from "@/stores/walletStore";
-import { useNetworkStore } from "@/stores/networkStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useAssistantChatStore } from "@/stores/assistantChatStore";
 import { isDestrallDesktop } from "@/lib/desktopWallet";
@@ -54,14 +35,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AssistantStructuredMessageRenderer } from "@/components/assistant/AssistantStructuredMessageRenderer";
+import { parseAssistantMessageMetadata } from "../../assistant/assistantMessageMetadata";
+import type { AssistantStructuredResult } from "../../assistant/assistantResultTypes";
+import { desktopAssistantChatUpdateMessage } from "@/lib/desktopAssistantChat";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,95 +57,6 @@ export const Route = createFileRoute("/assistant")({
   }),
 });
 
-type ActionStatus = "pending" | "executing" | "success";
-
-type AssetFlow = {
-  direction: "out" | "in";
-  amount: string;
-  token: string;
-  kind: "token" | "object";
-  objectName?: string;
-};
-
-type WalletHolding = {
-  symbol: string;
-  name: string;
-  amount: string;
-  valueUsd?: string;
-  change24h?: number;
-};
-
-type YieldPosition = {
-  protocol: string;
-  asset: string;
-  supplied: string;
-  apy: string;
-  valueUsd?: string;
-};
-
-type WalletPayload =
-  | {
-      view: "portfolio";
-      title: string;
-      network: string;
-      totalUsd?: string;
-      totalNative?: string;
-      holdings: WalletHolding[];
-    }
-  | {
-      view: "yield";
-      title: string;
-      network: string;
-      totalUsd?: string;
-      positions: YieldPosition[];
-    };
-
-type ProtocolPool = {
-  protocol: string;
-  asset: string;
-  apy: string;
-  tvlUsd?: string;
-  utilization?: string;
-};
-
-type ProtocolCoin = {
-  symbol: string;
-  name: string;
-  network?: string;
-  liquidityUsd?: string;
-};
-
-type ProtocolPayload =
-  | {
-      view: "pools";
-      title: string;
-      source: string;
-      pools: ProtocolPool[];
-    }
-  | {
-      view: "coins";
-      title: string;
-      source: string;
-      coins: ProtocolCoin[];
-    };
-
-type Msg =
-  | { id: string; kind: "user"; text: string; attachments?: Attachment[] }
-  | { id: string; kind: "assistant"; text: string }
-  | { id: string; kind: "wallet"; payload: WalletPayload }
-  | { id: string; kind: "protocol"; payload: ProtocolPayload }
-  | {
-      id: string;
-      kind: "action";
-      status: ActionStatus;
-      title: string;
-      label: string;
-      source: { type: "core" | "package"; name: string };
-      flows: AssetFlow[];
-      details: { k: string; v: string }[];
-      note: string;
-      digest?: string;
-    };
 
 type Attachment = {
   id: string;
@@ -178,14 +67,89 @@ type Attachment = {
   isImage: boolean;
 };
 
-function rowsToPersistedMsgs(rows: AssistantMessageRow[]): Msg[] {
-  return rows
-    .filter((r) => r.role === "user" || r.role === "assistant")
-    .map((r) => ({
-      id: r.id,
-      kind: r.role as "user" | "assistant",
-      text: r.content,
-    }));
+type OverlayMsg =
+  | { id: string; kind: "user"; text: string; attachments?: Attachment[] }
+  | { id: string; kind: "assistant"; text: string };
+
+type ThreadItem =
+  | { key: string; type: "user"; id: string; text: string; attachments?: Attachment[] }
+  | { key: string; type: "assistant_text"; messageId: string; text: string }
+  | {
+      key: string;
+      type: "structured";
+      messageId: string;
+      chatId: string;
+      metadata: string | null;
+      blocks: AssistantStructuredResult[];
+    };
+
+function buildThreadItemsFromRows(rows: AssistantMessageRow[], chatId: string): ThreadItem[] {
+  const out: ThreadItem[] = [];
+  for (const r of rows) {
+    if (r.role === "user") {
+      out.push({
+        key: `u:${r.id}`,
+        type: "user",
+        id: r.id,
+        text: r.content,
+      });
+      continue;
+    }
+    if (r.role === "assistant") {
+      const blocks = parseAssistantMessageMetadata(r.metadata);
+      const text = r.content.trim();
+      if (text) {
+        out.push({
+          key: `a:${r.id}:t`,
+          type: "assistant_text",
+          messageId: r.id,
+          text: r.content,
+        });
+      }
+      if (blocks.length > 0) {
+        out.push({
+          key: `a:${r.id}:s`,
+          type: "structured",
+          messageId: r.id,
+          chatId,
+          metadata: r.metadata,
+          blocks,
+        });
+      }
+      if (!text && blocks.length === 0) {
+        out.push({
+          key: `a:${r.id}:e`,
+          type: "assistant_text",
+          messageId: r.id,
+          text: r.content,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function buildOverlayThreadItems(overlay: OverlayMsg[]): ThreadItem[] {
+  const out: ThreadItem[] = [];
+  for (const m of overlay) {
+    if (m.kind === "user") {
+      out.push({
+        key: `o-u:${m.id}`,
+        type: "user",
+        id: m.id,
+        text: m.text,
+        attachments: m.attachments,
+      });
+    } else {
+      out.push({
+        key: `o-a:${m.id}`,
+        type: "assistant_text",
+        messageId: m.id,
+        text: m.text,
+      });
+    }
+  }
+  return out;
 }
 
 function formatChatListTime(iso: string | null | undefined): string {
@@ -253,672 +217,6 @@ function AssistantBubble({ text }: { text: string }) {
   );
 }
 
-type YieldSort = "apy-desc" | "apy-asc" | "value-desc" | "value-asc" | "protocol" | "asset";
-
-function parsePct(s: string) {
-  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
-  return isNaN(n) ? 0 : n;
-}
-function parseUsd(s?: string) {
-  if (!s) return 0;
-  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
-  return isNaN(n) ? 0 : n;
-}
-
-const LIST_LIMIT = 5;
-
-function MoreFooter({
-  total,
-  shown,
-  onOpen,
-}: {
-  total: number;
-  shown: number;
-  onOpen: () => void;
-}) {
-  if (total <= shown) return null;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full px-4 py-2.5 border-t border-border/60 text-xs font-semibold text-brand hover:bg-brand/5 transition-colors flex items-center justify-center gap-1.5"
-    >
-      View all {total} <ArrowDownCircle className="w-3.5 h-3.5" />
-    </button>
-  );
-}
-
-function ListModal({
-  open,
-  onOpenChange,
-  title,
-  subtitle,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 overflow-hidden">
-        <DialogHeader className="p-4 border-b border-border/60">
-          <DialogTitle>{title}</DialogTitle>
-          {subtitle && <DialogDescription>{subtitle}</DialogDescription>}
-        </DialogHeader>
-        <div className="max-h-[70vh] overflow-y-auto">{children}</div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function YieldList({ positions }: { positions: YieldPosition[] }) {
-  const [sort, setSort] = useState<YieldSort>("apy-desc");
-  const [protocol, setProtocol] = useState<string>("all");
-  const [asset, setAsset] = useState<string>("all");
-  const [open, setOpen] = useState(false);
-
-  const protocols = Array.from(new Set(positions.map((p) => p.protocol)));
-  const assets = Array.from(new Set(positions.map((p) => p.asset)));
-
-  const filtered = positions.filter(
-    (p) =>
-      (protocol === "all" || p.protocol === protocol) &&
-      (asset === "all" || p.asset === asset)
-  );
-
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case "apy-desc":
-        return parsePct(b.apy) - parsePct(a.apy);
-      case "apy-asc":
-        return parsePct(a.apy) - parsePct(b.apy);
-      case "value-desc":
-        return parseUsd(b.valueUsd) - parseUsd(a.valueUsd);
-      case "value-asc":
-        return parseUsd(a.valueUsd) - parseUsd(b.valueUsd);
-      case "protocol":
-        return a.protocol.localeCompare(b.protocol);
-      case "asset":
-        return a.asset.localeCompare(b.asset);
-    }
-  });
-
-  const selectCls =
-    "h-7 rounded-full border border-border bg-background/60 px-2 text-[11px] font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-brand/60";
-
-  return (
-    <div>
-      <div className="flex items-center gap-1.5 flex-wrap px-4 py-2.5 border-b border-border/60 bg-background/30">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mr-1">
-          Sort
-        </span>
-        <select
-          aria-label="Sort yield positions"
-          className={selectCls}
-          value={sort}
-          onChange={(e) => setSort(e.target.value as YieldSort)}
-        >
-          <option value="apy-desc">APY ↓</option>
-          <option value="apy-asc">APY ↑</option>
-          <option value="value-desc">Value ↓</option>
-          <option value="value-asc">Value ↑</option>
-          <option value="protocol">Protocol</option>
-          <option value="asset">Asset</option>
-        </select>
-        <select
-          aria-label="Filter by protocol"
-          className={selectCls}
-          value={protocol}
-          onChange={(e) => setProtocol(e.target.value)}
-        >
-          <option value="all">All protocols</option>
-          {protocols.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by asset"
-          className={selectCls}
-          value={asset}
-          onChange={(e) => setAsset(e.target.value)}
-        >
-          <option value="all">All assets</option>
-          {assets.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </div>
-      {sorted.length === 0 ? (
-        <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No positions match these filters.
-        </p>
-      ) : (
-        <>
-          <ul className="divide-y divide-border/60">
-            {sorted.slice(0, LIST_LIMIT).map((p, i) => (
-              <YieldRow key={i} p={p} />
-            ))}
-          </ul>
-          <MoreFooter
-            total={sorted.length}
-            shown={LIST_LIMIT}
-            onOpen={() => setOpen(true)}
-          />
-          <ListModal
-            open={open}
-            onOpenChange={setOpen}
-            title="Yield positions"
-            subtitle={`${sorted.length} positions`}
-          >
-            <ul className="divide-y divide-border/60">
-              {sorted.map((p, i) => (
-                <YieldRow key={i} p={p} />
-              ))}
-            </ul>
-          </ListModal>
-        </>
-      )}
-    </div>
-  );
-}
-
-function YieldRow({ p }: { p: YieldPosition }) {
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <div className="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-        <Coins className="w-4 h-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">
-          {p.protocol} · {p.asset}
-        </p>
-        <p className="text-xs text-muted-foreground">{p.supplied}</p>
-      </div>
-      <div className="text-right">
-        {p.valueUsd && <p className="text-sm font-semibold">{p.valueUsd}</p>}
-        <p className="text-xs font-semibold text-emerald-500">{p.apy} APY</p>
-      </div>
-    </li>
-  );
-}
-
-function HoldingRow({ h }: { h: WalletHolding }) {
-  const up = (h.change24h ?? 0) > 0;
-  const down = (h.change24h ?? 0) < 0;
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <div className="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center text-[10px] font-bold">
-        {h.symbol.slice(0, 3)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{h.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {h.amount} {h.symbol}
-        </p>
-      </div>
-      <div className="text-right">
-        {h.valueUsd && <p className="text-sm font-semibold">{h.valueUsd}</p>}
-        {h.change24h !== undefined && h.change24h !== 0 && (
-          <p
-            className={`text-xs font-semibold inline-flex items-center gap-0.5 ${
-              up ? "text-emerald-500" : down ? "text-rose-500" : "text-muted-foreground"
-            }`}
-          >
-            <TrendingUp className={`w-3 h-3 ${down ? "rotate-180" : ""}`} />
-            {up ? "+" : ""}
-            {h.change24h}%
-          </p>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function WalletBubble({ payload }: { payload: WalletPayload }) {
-  const Icon = payload.view === "portfolio" ? PieChart : Sprout;
-  const [open, setOpen] = useState(false);
-  const holdings = payload.view === "portfolio" ? payload.holdings : [];
-  return (
-    <div className="flex justify-start">
-      <div
-        className="w-full max-w-md rounded-2xl border border-brand/40 bg-card/60 overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(160deg, color-mix(in oklab, var(--brand) 8%, var(--card)) 0%, var(--card) 60%)",
-        }}
-      >
-        <div className="flex items-center gap-3 p-4 border-b border-border/60">
-          <div className="w-9 h-9 rounded-xl border border-brand/40 bg-brand/10 text-brand flex items-center justify-center shrink-0">
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-brand uppercase">
-              {payload.title}
-            </p>
-            <p className="text-sm font-semibold flex items-center gap-2">
-              <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground font-medium">{payload.network}</span>
-            </p>
-          </div>
-          {payload.totalUsd && (
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                Total
-              </p>
-              <p className="text-base font-bold">{payload.totalUsd}</p>
-            </div>
-          )}
-        </div>
-
-        {payload.view === "portfolio" ? (
-          <>
-            <ul className="divide-y divide-border/60">
-              {holdings.slice(0, LIST_LIMIT).map((h) => (
-                <HoldingRow key={h.symbol} h={h} />
-              ))}
-            </ul>
-            <MoreFooter
-              total={holdings.length}
-              shown={LIST_LIMIT}
-              onOpen={() => setOpen(true)}
-            />
-            <ListModal
-              open={open}
-              onOpenChange={setOpen}
-              title={payload.title}
-              subtitle={`${payload.network}${payload.totalUsd ? ` · ${payload.totalUsd}` : ""}`}
-            >
-              <ul className="divide-y divide-border/60">
-                {holdings.map((h) => (
-                  <HoldingRow key={h.symbol} h={h} />
-                ))}
-              </ul>
-            </ListModal>
-          </>
-        ) : (
-          <YieldList positions={payload.positions} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PoolRow({ p }: { p: ProtocolPool }) {
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <div className="w-8 h-8 rounded-full bg-sky-500/10 text-sky-500 flex items-center justify-center text-[10px] font-bold">
-        {p.asset.slice(0, 3)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">
-          {p.protocol} · {p.asset}
-        </p>
-        {(p.tvlUsd || p.utilization) && (
-          <p className="text-xs text-muted-foreground">
-            {p.tvlUsd && <>TVL {p.tvlUsd}</>}
-            {p.tvlUsd && p.utilization && " · "}
-            {p.utilization && <>Util {p.utilization}</>}
-          </p>
-        )}
-      </div>
-      <p className="text-sm font-bold text-emerald-500">{p.apy}</p>
-    </li>
-  );
-}
-
-function CoinRow({ c }: { c: ProtocolCoin }) {
-  return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <div className="w-8 h-8 rounded-full bg-sky-500/10 text-sky-500 flex items-center justify-center text-[10px] font-bold">
-        {c.symbol.slice(0, 3)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{c.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {c.symbol}
-          {c.network && <> · {c.network}</>}
-        </p>
-      </div>
-      {c.liquidityUsd && (
-        <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Liquidity
-          </p>
-          <p className="text-sm font-semibold">{c.liquidityUsd}</p>
-        </div>
-      )}
-    </li>
-  );
-}
-
-function ProtocolBubble({ payload }: { payload: ProtocolPayload }) {
-  const Icon = payload.view === "pools" ? Network : ArrowLeftRight;
-  const [open, setOpen] = useState(false);
-  const total = payload.view === "pools" ? payload.pools.length : payload.coins.length;
-  return (
-    <div className="flex justify-start">
-      <div
-        className="w-full max-w-md rounded-2xl border border-sky-500/40 bg-card/60 overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(160deg, color-mix(in oklab, oklch(0.7 0.15 230) 8%, var(--card)) 0%, var(--card) 60%)",
-        }}
-      >
-        <div className="flex items-center gap-3 p-4 border-b border-border/60">
-          <div className="w-9 h-9 rounded-xl border border-sky-500/40 bg-sky-500/10 text-sky-500 flex items-center justify-center shrink-0">
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-sky-500 uppercase">
-              Protocol info
-            </p>
-            <p className="text-sm font-semibold truncate">{payload.title}</p>
-          </div>
-          <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-500">
-            <Info className="w-3 h-3" />
-            {payload.source}
-          </span>
-        </div>
-
-        {payload.view === "pools" ? (
-          <ul className="divide-y divide-border/60">
-            {payload.pools.slice(0, LIST_LIMIT).map((p, i) => (
-              <PoolRow key={i} p={p} />
-            ))}
-          </ul>
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {payload.coins.slice(0, LIST_LIMIT).map((c) => (
-              <CoinRow key={c.symbol} c={c} />
-            ))}
-          </ul>
-        )}
-
-        <MoreFooter total={total} shown={LIST_LIMIT} onOpen={() => setOpen(true)} />
-        <ListModal
-          open={open}
-          onOpenChange={setOpen}
-          title={payload.title}
-          subtitle={`${payload.source} · ${total} ${payload.view === "pools" ? "pools" : "coins"}`}
-        >
-          {payload.view === "pools" ? (
-            <ul className="divide-y divide-border/60">
-              {payload.pools.map((p, i) => (
-                <PoolRow key={i} p={p} />
-              ))}
-            </ul>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {payload.coins.map((c) => (
-                <CoinRow key={c.symbol} c={c} />
-              ))}
-            </ul>
-          )}
-        </ListModal>
-      </div>
-    </div>
-  );
-}
-
-function ActionBubble({
-  msg,
-  onApprove,
-  onReject,
-}: {
-  msg: Extract<Msg, { kind: "action" }>;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  const network = useNetworkStore((s) => s.network);
-  const isExecuting = msg.status === "executing";
-  const isDone = msg.status === "success";
-
-  const summary =
-    msg.details.find((d) => d.k === "Amount")?.v ??
-    msg.details.find((d) => d.k === "Token")?.v ??
-    msg.label;
-
-  return (
-    <div className="flex justify-start">
-      <div
-        className="w-full max-w-md rounded-2xl border border-brand/40 bg-card/60 p-4"
-        style={{
-          background:
-            "linear-gradient(160deg, color-mix(in oklab, var(--brand) 8%, var(--card)) 0%, var(--card) 60%)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl border border-brand/40 bg-brand/10 text-brand flex items-center justify-center shrink-0">
-            <ArrowDownCircle className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-brand uppercase">
-              {msg.title}
-            </p>
-            <p className="text-sm font-semibold truncate">{summary}</p>
-          </div>
-          {isExecuting && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 px-2 py-1 text-[10px] font-bold tracking-widest text-brand uppercase">
-              <Loader2 className="w-3 h-3 animate-spin" />
-            </span>
-          )}
-          {isDone && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 px-2 py-1 text-[10px] font-bold tracking-widest text-emerald-500 uppercase">
-              <CheckCircle2 className="w-3 h-3" />
-              Done
-            </span>
-          )}
-        </div>
-
-        {/* Source + flow summary */}
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-              msg.source.type === "core"
-                ? "border-brand/40 bg-brand/10 text-brand"
-                : "border-amber-500/40 bg-amber-500/10 text-amber-500"
-            }`}
-            title={msg.source.type === "core" ? "Built-in core action" : "Installed package"}
-          >
-            {msg.source.type === "core" ? (
-              <Shield className="w-3 h-3" />
-            ) : (
-              <Package className="w-3 h-3" />
-            )}
-            {msg.source.type === "core" ? "Core" : msg.source.name}
-          </span>
-        </div>
-
-        <ul className="mt-3 space-y-1.5">
-          {msg.flows.map((f, i) => {
-            const isOut = f.direction === "out";
-            return (
-              <li
-                key={i}
-                className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-3 py-2 text-xs"
-              >
-                <span
-                  className={`inline-flex w-6 h-6 items-center justify-center rounded-full ${
-                    isOut
-                      ? "bg-rose-500/10 text-rose-500"
-                      : "bg-emerald-500/10 text-emerald-500"
-                  }`}
-                >
-                  {isOut ? (
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  ) : (
-                    <ArrowDownLeft className="w-3.5 h-3.5" />
-                  )}
-                </span>
-                <span className="font-semibold">
-                  {isOut ? "Out" : "In"} · {f.amount} {f.token}
-                </span>
-                {f.kind === "object" && (
-                  <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
-                    <Box className="w-3 h-3" />
-                    {f.objectName ?? "Object"}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-
-        <div className="mt-3 flex items-center gap-2">
-          <Dialog>
-            <DialogTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary transition"
-              >
-                <Info className="w-3.5 h-3.5" />
-                Details
-              </button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{msg.label}</DialogTitle>
-                <DialogDescription className="text-xs uppercase tracking-[0.18em] text-brand">
-                  {msg.title}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="rounded-2xl border border-border/60 bg-background/40 p-3 text-xs">
-                <p className="text-muted-foreground mb-2 font-semibold uppercase tracking-wider text-[10px]">
-                  Source
-                </p>
-                <div className="flex items-center gap-2">
-                  {msg.source.type === "core" ? (
-                    <Shield className="w-4 h-4 text-brand" />
-                  ) : (
-                    <Package className="w-4 h-4 text-amber-500" />
-                  )}
-                  <span className="font-semibold">{msg.source.name}</span>
-                  <span className="text-muted-foreground">
-                    · {msg.source.type === "core" ? "Built-in core" : "Installed package"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border/60 bg-background/40 p-3 text-xs space-y-2">
-                <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[10px]">
-                  Asset movement
-                </p>
-                {msg.flows.map((f, i) => {
-                  const isOut = f.direction === "out";
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex w-6 h-6 items-center justify-center rounded-full ${
-                          isOut
-                            ? "bg-rose-500/10 text-rose-500"
-                            : "bg-emerald-500/10 text-emerald-500"
-                        }`}
-                      >
-                        {isOut ? (
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        ) : (
-                          <ArrowDownLeft className="w-3.5 h-3.5" />
-                        )}
-                      </span>
-                      <span className="font-semibold">
-                        {isOut ? "Leaves wallet" : "Enters wallet"} · {f.amount} {f.token}
-                      </span>
-                      <span className="ml-auto text-muted-foreground inline-flex items-center gap-1">
-                        <Box className="w-3 h-3" />
-                        {f.kind === "object" ? f.objectName ?? "Object" : "Token"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <dl className="divide-y divide-border/60 text-sm">
-                {msg.details.map((d) => (
-                  <div key={d.k} className="flex items-center justify-between py-2.5 gap-4">
-                    <dt className="text-muted-foreground">{d.k}</dt>
-                    <dd className="font-semibold text-right">
-                      {d.v.split("**").map((c, i) =>
-                        i % 2 === 1 ? <strong key={i}>{c}</strong> : <span key={i}>{c}</span>
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="flex items-start gap-2 rounded-2xl border border-brand/30 bg-brand/5 p-3 text-xs text-muted-foreground">
-                <ShieldAlert className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <p>{msg.note}</p>
-              </div>
-              {isDone && msg.digest && (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => void navigator.clipboard.writeText(msg.digest)}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-sm font-bold text-brand hover:bg-brand/10 transition"
-                  >
-                    <Copy className="w-4 h-4" />
-                    Copy digest · {msg.digest.slice(0, 8)}…{msg.digest.slice(-6)}
-                  </button>
-                  {network && (
-                    <a
-                      href={`${network.explorerBaseUrl}/tx/${encodeURIComponent(msg.digest)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-sm font-bold text-brand hover:bg-brand/10 transition"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      View on explorer
-                    </a>
-                  )}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
-
-          {msg.status === "pending" && (
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onReject}
-                className="px-3 py-1.5 text-xs font-bold text-brand hover:opacity-80 transition"
-              >
-                Reject
-              </button>
-              <button
-                type="button"
-                onClick={onApprove}
-                className="px-4 py-1.5 rounded-full bg-brand text-brand-foreground text-xs font-bold hover:opacity-95 transition"
-              >
-                Approve
-              </button>
-            </div>
-          )}
-
-          {isExecuting && (
-            <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-brand">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Executing…
-            </span>
-          )}
-
-          {isDone && msg.digest && (
-            <span className="ml-auto text-[11px] font-mono text-muted-foreground truncate">
-              {msg.digest.slice(0, 6)}…{msg.digest.slice(-4)}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function HistoryItem({
   row,
   active,
@@ -942,7 +240,7 @@ function HistoryItem({
         type="button"
         onClick={onSelect}
         className={`w-full text-left pl-3 pr-9 py-2.5 rounded-xl text-sm font-medium transition ${
-          active ? "bg-secondary/70 ring-1 ring-brand/30" : "hover:bg-secondary/50"
+          active ? "bg-secondary/70 ring-1 ring-inset ring-brand/30" : "hover:bg-secondary/50"
         }`}
       >
         <div className="flex items-start gap-2 min-w-0">
@@ -1013,7 +311,7 @@ function AssistantPage() {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [overlayMessages, setOverlayMessages] = useState<Msg[]>([]);
+  const [overlayMessages, setOverlayMessages] = useState<OverlayMsg[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1048,6 +346,7 @@ function AssistantPage() {
   const messagesByChatId = useAssistantChatStore((s) => s.messagesByChatId);
   const assistantStreaming = useAssistantChatStore((s) => s.assistantStreaming);
   const chatError = useAssistantChatStore((s) => s.error);
+  const loadMessages = useAssistantChatStore((s) => s.loadMessages);
 
   const activeChatId =
     activeAccountId != null ? (activeChatIdByAccountId[activeAccountId] ?? null) : null;
@@ -1055,10 +354,11 @@ function AssistantPage() {
     activeAccountId && activeChatId
       ? (messagesByChatId[`${activeAccountId}:${activeChatId}`] ?? [])
       : [];
-  const messages = useMemo(
-    () => [...rowsToPersistedMsgs(persistedRows), ...overlayMessages],
-    [persistedRows, overlayMessages],
-  );
+  const threadItems = useMemo(() => {
+    const persisted =
+      activeChatId != null ? buildThreadItemsFromRows(persistedRows, activeChatId) : [];
+    return [...persisted, ...buildOverlayThreadItems(overlayMessages)];
+  }, [persistedRows, overlayMessages, activeChatId]);
 
   useEffect(() => {
     void initializeForAccount(activeAccountId ?? null);
@@ -1092,7 +392,7 @@ function AssistantPage() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [threadItems]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -1100,25 +400,6 @@ function AssistantPage() {
       attachments.forEach((a) => URL.revokeObjectURL(a.url));
     };
   }, []);
-
-  const updateAction = (id: string, patch: Partial<Extract<Msg, { kind: "action" }>>) =>
-    setOverlayMessages((prev) =>
-      prev.map((m) => (m.id === id && m.kind === "action" ? { ...m, ...patch } : m)),
-    );
-
-  const handleApprove = (id: string) => {
-    updateAction(id, { status: "executing" });
-    setTimeout(() => {
-      updateAction(id, {
-        status: "success",
-        digest: "53nJhwJgX9pQrTuVwXyZaBcDeFgHiJkLmNoPqRsTuVwRntGak",
-      });
-    }, 2200);
-  };
-
-  const handleReject = (id: string) => {
-    setOverlayMessages((prev) => prev.filter((m) => m.id !== id));
-  };
 
   const addFiles = (files: FileList | File[]) => {
     const next: Attachment[] = [];
@@ -1321,27 +602,39 @@ function AssistantPage() {
                   </Link>
                 </div>
               ) : null}
-              {messages.map((m) => {
-                if (m.kind === "user")
+              {threadItems.map((item) => {
+                if (item.type === "user") {
                   return (
                     <UserBubble
-                      key={m.id}
-                      text={m.text}
-                      attachments={m.attachments}
+                      key={item.key}
+                      text={item.text}
+                      attachments={item.attachments}
                     />
                   );
-                if (m.kind === "assistant")
-                  return <AssistantBubble key={m.id} text={m.text} />;
-                if (m.kind === "wallet")
-                  return <WalletBubble key={m.id} payload={m.payload} />;
-                if (m.kind === "protocol")
-                  return <ProtocolBubble key={m.id} payload={m.payload} />;
+                }
+                if (item.type === "assistant_text") {
+                  return <AssistantBubble key={item.key} text={item.text} />;
+                }
+                if (!activeAccountId) return null;
                 return (
-                  <ActionBubble
-                    key={m.id}
-                    msg={m}
-                    onApprove={() => handleApprove(m.id)}
-                    onReject={() => handleReject(m.id)}
+                  <AssistantStructuredMessageRenderer
+                    key={item.key}
+                    accountId={activeAccountId}
+                    chatId={item.chatId}
+                    messageId={item.messageId}
+                    initialMetadata={item.metadata}
+                    blocks={item.blocks}
+                    onUpdateMessage={async (metadata: string) => {
+                      await desktopAssistantChatUpdateMessage({
+                        accountId: activeAccountId,
+                        chatId: item.chatId,
+                        messageId: item.messageId,
+                        metadata,
+                      });
+                    }}
+                    onReloadThread={async () => {
+                      await loadMessages(activeAccountId, item.chatId);
+                    }}
                   />
                 );
               })}

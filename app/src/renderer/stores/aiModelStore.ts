@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   AssistantChatRequest,
+  AssistantChatResponse,
   AssistantRuntimeState,
   LlmModelView,
   LlmStateSnapshot,
@@ -42,7 +43,7 @@ type AiModelStoreState = {
   deleteModel: (modelId: string) => Promise<void>;
   loadModel: (modelId: string) => Promise<void>;
   unloadModel: () => Promise<void>;
-  sendMessage: (payload: AssistantChatRequest) => Promise<string>;
+  sendMessage: (payload: AssistantChatRequest) => Promise<AssistantChatResponse>;
   applyProgress: (event: ModelProgressEvent) => void;
 };
 

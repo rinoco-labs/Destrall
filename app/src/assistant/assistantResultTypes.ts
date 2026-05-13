@@ -1,0 +1,167 @@
+/**
+ * Structured assistant turn payloads (persisted in assistant_messages.metadata, JSON).
+ * The UI maps each entry to rich cards — not plain markdown.
+ */
+
+export type AssistantAssetFlow = {
+  direction: "out" | "in";
+  amount: string;
+  token: string;
+  kind: "token" | "object";
+  objectName?: string;
+};
+
+export type AssistantProposalCard = {
+  title: string;
+  label: string;
+  source: { type: "core" | "package"; name: string };
+  flows: AssistantAssetFlow[];
+  details: { k: string; v: string }[];
+  note: string;
+};
+
+export type PortfolioSummaryResult = {
+  type: "portfolio_summary";
+  network: string;
+  totalUsd?: string;
+  /** Optional short risk / concentration line when derived without fabricated prices */
+  concentrationNote?: string;
+  assets: Array<{
+    symbol: string;
+    name: string;
+    balanceFormatted: string;
+    valueUsd?: string;
+    changePercent24h?: number;
+    coinType?: string;
+  }>;
+};
+
+export type YieldPositionsResult = {
+  type: "yield_positions";
+  network: string;
+  totalUsd?: string;
+  positions: Array<{
+    protocol: string;
+    asset: string;
+    supplied: string;
+    apy?: string;
+    valueUsd?: string;
+  }>;
+  emptyHint?: string;
+};
+
+export type AvailableYieldPoolsResult = {
+  type: "available_yield_pools";
+  network: string;
+  protocolLabel: string;
+  pools: Array<{
+    protocol: string;
+    asset: string;
+    apy?: string;
+    tvlUsd?: string;
+    utilization?: string;
+    riskLabel?: string;
+  }>;
+  emptyHint?: string;
+};
+
+export type SwappableTokensResult = {
+  type: "swappable_tokens";
+  network: string;
+  routerLabel: string;
+  coins: Array<{
+    symbol: string;
+    name: string;
+    network?: string;
+    liquidityUsd?: string;
+    coinType?: string;
+  }>;
+  emptyHint?: string;
+};
+
+export type SendProposalResult = {
+  type: "send_proposal";
+  proposalId: string;
+  status: "pending" | "executing" | "success" | "failed" | "rejected";
+  transferRequestId?: string;
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
+  card: AssistantProposalCard;
+};
+
+export type SwapProposalResult = {
+  type: "swap_proposal";
+  proposalId: string;
+  status: "pending" | "executing" | "success" | "failed" | "rejected";
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
+  card: AssistantProposalCard;
+};
+
+export type NaviDepositProposalResult = {
+  type: "navi_deposit_proposal";
+  proposalId: string;
+  status: "pending" | "executing" | "success" | "failed" | "rejected";
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
+  card: AssistantProposalCard;
+};
+
+export type NaviWithdrawProposalResult = {
+  type: "navi_withdraw_proposal";
+  proposalId: string;
+  status: "pending" | "executing" | "success" | "failed" | "rejected";
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
+  card: AssistantProposalCard;
+};
+
+export type TransactionResultResult = {
+  type: "transaction_result";
+  title: string;
+  digest: string;
+  explorerUrl?: string | null;
+  summary: string;
+};
+
+export type AssistantErrorResult = {
+  type: "error";
+  message: string;
+  code?: string;
+};
+
+export type AssistantStructuredResult =
+  | PortfolioSummaryResult
+  | YieldPositionsResult
+  | AvailableYieldPoolsResult
+  | SwappableTokensResult
+  | SendProposalResult
+  | SwapProposalResult
+  | NaviDepositProposalResult
+  | NaviWithdrawProposalResult
+  | TransactionResultResult
+  | AssistantErrorResult;
+
+export type AssistantMessageMetadataV1 = {
+  v: 1;
+  structured: AssistantStructuredResult[];
+};
+
+export function isProposalStructuredResult(
+  r: AssistantStructuredResult,
+): r is
+  | SendProposalResult
+  | SwapProposalResult
+  | NaviDepositProposalResult
+  | NaviWithdrawProposalResult {
+  return (
+    r.type === "send_proposal" ||
+    r.type === "swap_proposal" ||
+    r.type === "navi_deposit_proposal" ||
+    r.type === "navi_withdraw_proposal"
+  );
+}

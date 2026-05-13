@@ -187,6 +187,35 @@ export class ChatHistoryService {
     return info.changes > 0;
   }
 
+  updateMessage(
+    accountId: string,
+    chatId: string,
+    messageId: string,
+    updates: { content?: string; metadata?: string | null },
+  ): PersistedAssistantMessage | null {
+    const owner = this.getChatAccountId(chatId);
+    if (owner !== accountId) return null;
+    const existing = this.db
+      .prepare(
+        `SELECT id, chat_id AS chatId, account_id AS accountId, role, content, metadata, created_at AS createdAt
+         FROM assistant_messages WHERE id = ? AND account_id = ? AND chat_id = ?`,
+      )
+      .get(messageId, accountId, chatId) as MessageRow | undefined;
+    if (!existing) return null;
+    const content = updates.content !== undefined ? updates.content : existing.content;
+    const metadata = updates.metadata !== undefined ? updates.metadata : existing.metadata;
+    this.db
+      .prepare(`UPDATE assistant_messages SET content = ?, metadata = ? WHERE id = ? AND account_id = ?`)
+      .run(content, metadata, messageId, accountId);
+    const row = this.db
+      .prepare(
+        `SELECT id, chat_id AS chatId, account_id AS accountId, role, content, metadata, created_at AS createdAt
+         FROM assistant_messages WHERE id = ? AND account_id = ?`,
+      )
+      .get(messageId, accountId) as MessageRow | undefined;
+    return row ? mapMessage(row) : null;
+  }
+
   addMessage(
     accountId: string,
     chatId: string,

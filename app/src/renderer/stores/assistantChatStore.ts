@@ -328,7 +328,8 @@ export const useAssistantChatStore = create<AssistantChatStoreState>((set, get) 
         accountId,
         chatId: cid,
         role: "assistant",
-        content: reply,
+        content: reply.content,
+        metadata: reply.metadata ?? null,
       });
     } catch (e) {
       const err = e instanceof Error ? e.message : "The model failed to respond.";

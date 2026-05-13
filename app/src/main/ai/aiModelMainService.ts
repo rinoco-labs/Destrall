@@ -13,6 +13,7 @@ import {
 import { getDatabase } from "../persistence/database";
 import { LlmModelRepository, type PersistedLlmModelInstall } from "../persistence/repositories/llmModelRepository";
 import { chainFacadeService } from "../services/chains/chainFacadeService";
+import { buildAssistantStructuredBlocks } from "../services/assistant/assistantStructuredOrchestrator";
 import { assistantInferenceService, type ChatTurnMessage } from "./assistantInferenceService";
 import { modelDownloadService } from "./modelDownloadService";
 import { modelRuntimeService } from "./modelRuntimeService";
@@ -389,16 +390,31 @@ export class AiModelMainService {
     accountId: string;
     language: string;
     personalityId: string;
-  }): Promise<string> {
+  }): Promise<{ content: string; metadata?: string | null }> {
     const model = modelRuntimeService.getModelOrThrow();
-    const walletContext = await this.buildWalletContext(payload.accountId);
-    return assistantInferenceService.generateReply({
+    const last = payload.messages[payload.messages.length - 1];
+    let metadata: string | null = null;
+    let walletContext = await this.buildWalletContext(payload.accountId);
+    if (last?.role === "user") {
+      const { blocks, systemAddendum } = await buildAssistantStructuredBlocks(
+        payload.accountId,
+        last.content,
+      );
+      if (blocks.length > 0) {
+        metadata = JSON.stringify({ v: 1, structured: blocks });
+      }
+      if (systemAddendum) {
+        walletContext = `${walletContext}${systemAddendum}`;
+      }
+    }
+    const content = await assistantInferenceService.generateReply({
       model,
       messages: payload.messages,
       language: payload.language,
       personalityId: payload.personalityId,
       walletContext,
     });
+    return { content, metadata };
   }
 }
 

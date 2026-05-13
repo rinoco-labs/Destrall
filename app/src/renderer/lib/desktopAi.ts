@@ -1,5 +1,6 @@
 import type {
   AssistantChatRequest,
+  AssistantChatResponse,
   AssistantRuntimeState,
   LlmStateSnapshot,
   ModelProgressEvent,
@@ -49,7 +50,7 @@ export async function desktopLlmAssistantRuntime(): Promise<AssistantRuntimeStat
   return unwrap(api().llm.assistantRuntime());
 }
 
-export async function desktopLlmChat(payload: AssistantChatRequest): Promise<string> {
+export async function desktopLlmChat(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
   return unwrap(api().llm.chat(payload));
 }
 

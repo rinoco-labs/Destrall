@@ -71,6 +71,12 @@ export type AssistantChatRequest = {
   personalityId: string;
 };
 
+/** LLM reply plus optional structured UI blocks (JSON metadata for assistant_messages). */
+export type AssistantChatResponse = {
+  content: string;
+  metadata?: string | null;
+};
+
 export type ContactRow = {
   id: string;
   accountId: string | null;
@@ -146,7 +152,7 @@ export type DestrallApi = {
     deleteModel: (modelId: string) => Promise<RpcResult<LlmStateSnapshot>>;
     cancelDownload: (modelId: string) => Promise<RpcResult<{ ok: true }>>;
     assistantRuntime: () => Promise<RpcResult<AssistantRuntimeState>>;
-    chat: (payload: AssistantChatRequest) => Promise<RpcResult<string>>;
+    chat: (payload: AssistantChatRequest) => Promise<RpcResult<AssistantChatResponse>>;
     onModelProgress: (listener: (event: ModelProgressEvent) => void) => () => void;
   };
   assistantChat: {
@@ -164,6 +170,13 @@ export type DestrallApi = {
       chatId: string;
       role: string;
       content: string;
+      metadata?: string | null;
+    }) => Promise<RpcResult<AssistantMessageRow>>;
+    updateMessage: (payload: {
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      content?: string;
       metadata?: string | null;
     }) => Promise<RpcResult<AssistantMessageRow>>;
     getActive: (accountId: string) => Promise<RpcResult<string | null>>;
@@ -214,7 +227,8 @@ export const IPCChannels = {
   assistantChatUnpin: "assistant-chat:unpin",
   assistantChatDelete: "assistant-chat:delete",
   assistantChatMessages: "assistant-chat:messages",
-  assistantChatAddMessage: "assistant-chat:add-message",
+    assistantChatAddMessage: "assistant-chat:add-message",
+    assistantChatUpdateMessage: "assistant-chat:update-message",
   assistantChatGetActive: "assistant-chat:get-active",
   assistantChatSetActive: "assistant-chat:set-active",
 } as const;

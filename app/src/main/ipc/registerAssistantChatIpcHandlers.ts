@@ -116,6 +116,33 @@ export function registerAssistantChatIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPCChannels.assistantChatUpdateMessage, async (_e, payload: unknown) => {
+    try {
+      const parsed = z
+        .object({
+          accountId: accountId,
+          chatId: chatId,
+          messageId: z.string().min(1),
+          content: z.string().max(200000).optional(),
+          metadata: z.string().max(50000).nullable().optional(),
+        })
+        .parse(payload);
+      const row = chatHistoryService.updateMessage(
+        parsed.accountId,
+        parsed.chatId,
+        parsed.messageId,
+        {
+          content: parsed.content,
+          metadata: parsed.metadata,
+        },
+      );
+      if (!row) return fail(new Error("Message not found"));
+      return ok(row);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
   ipcMain.handle(IPCChannels.assistantChatAddMessage, async (_e, payload: unknown) => {
     try {
       const parsed = z
