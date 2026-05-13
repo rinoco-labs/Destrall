@@ -103,6 +103,14 @@ class WalletService {
       .run(ACTIVE_ACCOUNT_KEY, accountId, now);
   }
 
+  getWalletAccount(accountId: string): WalletAccount | null {
+    try {
+      return this.getAccountById(accountId);
+    } catch {
+      return null;
+    }
+  }
+
   getStatus(): WalletStatusSnapshot {
     const profiles = this.listProfiles();
     const accounts = this.listAccounts();

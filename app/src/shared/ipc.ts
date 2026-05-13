@@ -1,6 +1,15 @@
 import type { ModelCatalogEntry } from "../ai/modelCatalog";
 import type { AssistantChatRow, AssistantMessageRow } from "./assistantChat";
-import type { WalletAccount, WalletStatusSnapshot } from "./wallet/types";
+import type { WalletAccount, WalletStatusSnapshot, ChainId } from "./wallet/types";
+import type {
+  ChainActivityPage,
+  NetworkUiSnapshot,
+  TokenBalanceView,
+  TransferExecuteResult,
+  TransferPrepareResult,
+} from "../types/blockchain";
+import type { SuiChainEnvironment } from "../config/chains/sui";
+import type { SupportedChainDescriptor } from "../config/networks";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -62,6 +71,20 @@ export type AssistantChatRequest = {
   personalityId: string;
 };
 
+export type ContactRow = {
+  id: string;
+  accountId: string | null;
+  name: string;
+  address: string;
+  chain: ChainId;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ChainNetworkStatePayload = NetworkUiSnapshot & {
+  supportedChains: SupportedChainDescriptor[];
+};
+
 export type DestrallApi = {
   wallet: {
     getStatus: () => Promise<RpcResult<WalletStatusSnapshot>>;
@@ -81,6 +104,39 @@ export type DestrallApi = {
     viewSeedPhrase: (password: string) => Promise<RpcResult<string>>;
     disconnect: () => Promise<RpcResult<{ ok: true }>>;
     refresh: () => Promise<RpcResult<WalletStatusSnapshot>>;
+  };
+  chain: {
+    getNetworkState: () => Promise<RpcResult<ChainNetworkStatePayload>>;
+    setNetwork: (payload: {
+      activeChain: ChainId;
+      suiEnvironment: SuiChainEnvironment;
+    }) => Promise<RpcResult<ChainNetworkStatePayload>>;
+    getBalances: (accountId: string) => Promise<RpcResult<TokenBalanceView[]>>;
+    getActivity: (payload: {
+      accountId: string;
+      cursor?: string | null;
+    }) => Promise<RpcResult<ChainActivityPage>>;
+    prepareTransfer: (payload: {
+      accountId: string;
+      recipient: string;
+      coinType: string;
+      amountDisplay: string;
+    }) => Promise<RpcResult<TransferPrepareResult>>;
+    confirmTransfer: (payload: {
+      transferRequestId: string;
+    }) => Promise<RpcResult<TransferExecuteResult>>;
+    onNetworkChanged: (listener: () => void) => () => void;
+  };
+  contacts: {
+    list: (payload: { query?: string }) => Promise<RpcResult<ContactRow[]>>;
+    create: (payload: {
+      name: string;
+      address: string;
+      chain: ChainId;
+      accountId?: string | null;
+    }) => Promise<RpcResult<ContactRow>>;
+    update: (payload: { id: string; name: string; address: string }) => Promise<RpcResult<ContactRow>>;
+    delete: (payload: { id: string }) => Promise<RpcResult<{ ok: true }>>;
   };
   llm: {
     getState: () => Promise<RpcResult<LlmStateSnapshot>>;
@@ -129,6 +185,17 @@ export const IPCChannels = {
   walletViewSeedPhrase: "wallet:view-seed-phrase",
   walletDisconnect: "wallet:disconnect",
   walletRefresh: "wallet:refresh",
+  chainGetNetworkState: "chain:get-network-state",
+  chainSetNetwork: "chain:set-network",
+  chainGetBalances: "chain:get-balances",
+  chainGetActivity: "chain:get-activity",
+  chainPrepareTransfer: "chain:prepare-transfer",
+  chainConfirmTransfer: "chain:confirm-transfer",
+  chainNetworkChanged: "chain:network-changed",
+  contactsList: "contacts:list",
+  contactsCreate: "contacts:create",
+  contactsUpdate: "contacts:update",
+  contactsDelete: "contacts:delete",
   llmGetState: "llm:get-state",
   llmInstallModel: "llm:install-model",
   llmSelectModel: "llm:select-model",

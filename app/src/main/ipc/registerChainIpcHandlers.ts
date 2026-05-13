@@ -1,0 +1,227 @@
+import { BrowserWindow, ipcMain } from "electron";
+import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { IPCChannels, type ChainNetworkStatePayload } from "../../shared/ipc";
+import {
+  chainAccountIdSchema,
+  chainActivitySchema,
+  chainConfirmTransferSchema,
+  chainPrepareTransferSchema,
+  chainSetNetworkSchema,
+  contactsCreateSchema,
+  contactsDeleteSchema,
+  contactsListSchema,
+  contactsUpdateSchema,
+} from "./schemas";
+import { chainFacadeService } from "../services/chains/chainFacadeService";
+import { networkSettingsService } from "../services/network/networkSettingsService";
+import { contactRepository } from "../persistence/repositories/contactRepository";
+import { SUPPORTED_CHAIN_DESCRIPTORS } from "../../config/networks";
+
+function ok<T>(data: T) {
+  return { ok: true as const, data };
+}
+
+function fail(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unexpected error";
+  return { ok: false as const, error: message };
+}
+
+function broadcastChainChanged() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(IPCChannels.chainNetworkChanged);
+  }
+}
+
+function networkPayload(): ChainNetworkStatePayload {
+  return {
+    ...chainFacadeService.getNetworkSnapshot(),
+    supportedChains: SUPPORTED_CHAIN_DESCRIPTORS,
+  };
+}
+
+export function registerChainIpcHandlers() {
+  networkSettingsService.initializeNetworkState();
+
+  ipcMain.handle(IPCChannels.chainGetNetworkState, async () => {
+    try {
+      return ok(networkPayload());
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainSetNetwork, async (_event, payload: unknown) => {
+    const parsed = chainSetNetworkSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid network request"));
+    }
+    try {
+      chainFacadeService.setActiveChain(parsed.data.activeChain);
+      chainFacadeService.setSuiNetwork(parsed.data.suiEnvironment);
+      broadcastChainChanged();
+      return ok(networkPayload());
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainGetBalances, async (_event, payload: unknown) => {
+    const raw = typeof payload === "string" ? { accountId: payload } : payload;
+    const parsed = chainAccountIdSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid account id"));
+    }
+    try {
+      return ok(await chainFacadeService.getTokenBalances(parsed.data.accountId));
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainGetActivity, async (_event, payload: unknown) => {
+    const parsed = chainActivitySchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid activity request"));
+    }
+    try {
+      return ok(
+        await chainFacadeService.getActivityPage(parsed.data.accountId, parsed.data.cursor ?? null),
+      );
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainPrepareTransfer, async (_event, payload: unknown) => {
+    const parsed = chainPrepareTransferSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid transfer request"));
+    }
+    try {
+      return ok(await chainFacadeService.prepareTransfer(parsed.data));
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainConfirmTransfer, async (_event, payload: unknown) => {
+    const parsed = chainConfirmTransferSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid confirm request"));
+    }
+    try {
+      const result = await chainFacadeService.confirmTransfer(parsed.data);
+      broadcastChainChanged();
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.contactsList, async (_event, payload: unknown) => {
+    const parsed = contactsListSchema.safeParse(payload ?? {});
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid contacts list request"));
+    }
+    try {
+      const rows = contactRepository.list(parsed.data.query);
+      return ok(
+        rows.map((r) => ({
+          id: r.id,
+          accountId: r.accountId,
+          name: r.name,
+          address: r.address,
+          chain: r.chain,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+        })),
+      );
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.contactsCreate, async (_event, payload: unknown) => {
+    const parsed = contactsCreateSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid contact"));
+    }
+    try {
+      let address = parsed.data.address.trim();
+      if (parsed.data.chain === "sui") {
+        try {
+          address = normalizeSuiAddress(address);
+        } catch {
+          return fail(new Error("Invalid Sui address."));
+        }
+      }
+      const row = contactRepository.create({
+        name: parsed.data.name.trim(),
+        address,
+        chain: parsed.data.chain,
+        accountId: parsed.data.accountId ?? null,
+      });
+      return ok({
+        id: row.id,
+        accountId: row.accountId,
+        name: row.name,
+        address: row.address,
+        chain: row.chain,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.contactsUpdate, async (_event, payload: unknown) => {
+    const parsed = contactsUpdateSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid contact update"));
+    }
+    try {
+      const existing = contactRepository.getById(parsed.data.id);
+      if (!existing) {
+        return fail(new Error("Contact not found."));
+      }
+      let address = parsed.data.address.trim();
+      if (existing.chain === "sui") {
+        try {
+          address = normalizeSuiAddress(address);
+        } catch {
+          return fail(new Error("Invalid Sui address."));
+        }
+      }
+      const row = contactRepository.update({
+        id: parsed.data.id,
+        name: parsed.data.name.trim(),
+        address,
+      });
+      return ok({
+        id: row.id,
+        accountId: row.accountId,
+        name: row.name,
+        address: row.address,
+        chain: row.chain,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.contactsDelete, async (_event, payload: unknown) => {
+    const parsed = contactsDeleteSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid delete request"));
+    }
+    try {
+      contactRepository.delete(parsed.data.id);
+      return ok({ ok: true as const });
+    } catch (error) {
+      return fail(error);
+    }
+  });
+}

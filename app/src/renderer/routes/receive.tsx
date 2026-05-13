@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Check, Copy } from "lucide-react";
+import { ArrowLeft, Check, Copy, Share2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { WALLET_ADDRESS } from "@/lib/wallet-store";
+import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
+import { useNetworkStore } from "@/stores/networkStore";
+import { shortAddr } from "@/lib/wallet-store";
 
 export const Route = createFileRoute("/receive")({
   component: ReceivePage,
@@ -16,17 +18,35 @@ export const Route = createFileRoute("/receive")({
 
 function ReceivePage() {
   const [copied, setCopied] = useState(false);
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(
-    WALLET_ADDRESS,
-  )}`;
+  const walletSnap = useWalletStore();
+  const activeAccount = useMemo(() => getActiveWalletAccount(walletSnap), [walletSnap]);
+  const addr = activeAccount?.address ?? "";
+  const network = useNetworkStore((s) => s.network);
+
+  const qrUrl = addr
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(addr)}`
+    : "";
 
   const copy = async () => {
+    if (!addr) return;
     try {
-      await navigator.clipboard.writeText(WALLET_ADDRESS);
+      await navigator.clipboard.writeText(addr);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
       /* noop */
+    }
+  };
+
+  const share = async () => {
+    if (!addr || !navigator.share) return;
+    try {
+      await navigator.share({
+        title: "My Sui address",
+        text: addr,
+      });
+    } catch {
+      /* user cancelled or unsupported */
     }
   };
 
@@ -46,50 +66,67 @@ function ReceivePage() {
 
         <div className="rounded-2xl border border-border bg-card/40 backdrop-blur p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Scan or share your wallet address to receive tokens.
+            Scan or share your wallet address to receive tokens on{" "}
+            <span className="text-foreground font-medium">
+              {network ? `${network.activeChain} · ${network.activeEnvironment}` : "the active network"}
+            </span>
+            .
           </p>
 
-          <div className="mt-6 mx-auto inline-block rounded-2xl bg-white p-4 shadow-md">
-            <img
-              src={qrUrl}
-              alt="Wallet QR code"
-              width={256}
-              height={256}
-              className="block w-64 h-64"
-            />
-          </div>
+          {addr ? (
+            <>
+              <div className="mt-6 mx-auto inline-block rounded-2xl bg-white p-4 shadow-md">
+                <img src={qrUrl} alt="Wallet QR code" width={256} height={256} className="block w-64 h-64" />
+              </div>
 
-          <div className="mt-6">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-              Wallet address
+              <div className="mt-6">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Wallet address</p>
+                <div className="rounded-xl border border-border bg-background/60 px-4 py-3 flex items-center gap-3">
+                  <span className="flex-1 text-left font-mono text-sm break-all">{addr}</span>
+                  <button
+                    type="button"
+                    onClick={() => void copy()}
+                    className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-xs font-semibold hover:opacity-95 transition shrink-0"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {typeof navigator !== "undefined" && navigator.share && (
+                <button
+                  type="button"
+                  onClick={() => void share()}
+                  className="mt-4 inline-flex items-center gap-2 text-sm text-brand hover:opacity-80"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share address
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="mt-8 text-sm text-muted-foreground">Unlock your wallet to see a receive address.</p>
+          )}
+
+          {activeAccount && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Account: <span className="text-foreground font-medium">{activeAccount.name}</span> ·{" "}
+              {shortAddr(activeAccount.address, 10, 10)}
             </p>
-            <div className="rounded-xl border border-border bg-background/60 px-4 py-3 flex items-center gap-3">
-              <span className="flex-1 text-left font-mono text-sm break-all">
-                {WALLET_ADDRESS}
-              </span>
-              <button
-                type="button"
-                onClick={copy}
-                className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-xs font-semibold hover:opacity-95 transition"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    Copy
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          )}
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Only send compatible tokens to this address. Sending unsupported assets
-            may result in permanent loss.
+            Only send compatible tokens on this network. Unsupported assets may be lost.
           </p>
         </div>
       </div>

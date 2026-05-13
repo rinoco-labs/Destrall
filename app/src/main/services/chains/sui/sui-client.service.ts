@@ -1,44 +1,21 @@
-export type SuiNetwork = "mainnet" | "testnet" | "devnet" | "localnet";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import type { SuiChainEnvironment } from "../../../../config/chains/sui";
+import { getSuiRpcUrl } from "../../../../config/chains/sui";
 
-const DEFAULT_RPC: Record<SuiNetwork, string> = {
-  mainnet: "https://fullnode.mainnet.sui.io:443",
-  testnet: "https://fullnode.testnet.sui.io:443",
-  devnet: "https://fullnode.devnet.sui.io:443",
-  localnet: "http://127.0.0.1:9000",
-};
+const clientCache = new Map<SuiChainEnvironment, SuiJsonRpcClient>();
 
-export function getSuiRpcUrl(network: SuiNetwork = "devnet"): string {
-  return DEFAULT_RPC[network];
-}
-
-export class SuiClientService {
-  constructor(private readonly rpcUrl: string) {}
-
-  async getBalance(address: string): Promise<{ totalBalance: string }> {
-    const response = await fetch(this.rpcUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "suix_getBalance",
-        params: [address],
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Sui RPC request failed (${response.status})`);
-    }
-    const payload = (await response.json()) as {
-      result?: { totalBalance: string };
-      error?: { message?: string };
-    };
-    if (payload.error?.message) {
-      throw new Error(payload.error.message);
-    }
-    return { totalBalance: payload.result?.totalBalance ?? "0" };
+/** JSON-RPC client for the configured cluster (v2 SDK: `SuiJsonRpcClient`, not `SuiClient`). */
+export function getSuiClientForEnvironment(env: SuiChainEnvironment): SuiJsonRpcClient {
+  let client = clientCache.get(env);
+  if (!client) {
+    const url = getSuiRpcUrl(env);
+    client = new SuiJsonRpcClient({ url, network: env });
+    clientCache.set(env, client);
   }
+  return client;
 }
 
-export function createSuiClient(network: SuiNetwork = "devnet"): SuiClientService {
-  return new SuiClientService(getSuiRpcUrl(network));
+/** Call after switching RPC target so new connections pick up the new URL. */
+export function clearSuiClientCache() {
+  clientCache.clear();
 }

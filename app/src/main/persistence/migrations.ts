@@ -28,6 +28,13 @@ const migrations: Migration[] = [
       ensureAssistantChatTables(db);
     },
   },
+  {
+    version: 4,
+    name: "contacts",
+    up: (db) => {
+      ensureContactsTable(db);
+    },
+  },
 ];
 
 export function ensureAssistantChatTables(db: DatabaseSync) {
@@ -76,6 +83,159 @@ export function ensureLlmModelTables(db: DatabaseSync) {
       installed_at INTEGER,
       updated_at INTEGER NOT NULL
     ) STRICT;
+  `);
+}
+
+function contactsColumnNames(db: DatabaseSync): Set<string> {
+  if (!tableExists(db, "contacts")) {
+    return new Set();
+  }
+  const rows = db.prepare(`PRAGMA table_info(contacts)`).all() as { name: string }[];
+  return new Set(rows.map((r) => r.name));
+}
+
+function contactsHasForeignKeys(db: DatabaseSync): boolean {
+  if (!tableExists(db, "contacts")) return false;
+  const rows = db.prepare(`PRAGMA foreign_key_list(contacts)`).all() as unknown[];
+  return rows.length > 0;
+}
+
+/**
+ * Legacy or fork DBs may define `FOREIGN KEY (account_id) REFERENCES wallet_accounts(id)`.
+ * Destrall treats `account_id` as optional metadata; invalid ids must not block inserts.
+ * Rebuild `contacts` without FK constraints while preserving rows (invalid account_id → NULL).
+ */
+function stripContactsTableForeignKeys(db: DatabaseSync) {
+  if (!contactsHasForeignKeys(db)) return;
+
+  console.warn(
+    "[migrations] Rebuilding contacts without foreign keys (legacy schema used REFERENCES wallet_accounts).",
+  );
+
+  const cols = contactsColumnNames(db);
+  const rows = db.prepare(`SELECT * FROM contacts`).all() as Record<string, unknown>[];
+  const walletAccountsExist = tableExists(db, "wallet_accounts");
+  const accOk = walletAccountsExist
+    ? db.prepare(`SELECT 1 FROM wallet_accounts WHERE id = ?`)
+    : null;
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`DROP TABLE IF EXISTS contacts__fkstrip`);
+    db.exec(`
+      CREATE TABLE contacts__fkstrip (
+        id TEXT PRIMARY KEY,
+        account_id TEXT,
+        name TEXT NOT NULL,
+        address TEXT NOT NULL,
+        chain TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+    `);
+    const insert = db.prepare(`
+      INSERT INTO contacts__fkstrip (id, account_id, name, address, chain, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const r of rows) {
+      const id = String(r.id ?? "");
+      const name = String(r.name ?? "");
+      const address = String(r.address ?? "");
+      if (!id || !name || !address) continue;
+
+      let chain = "sui";
+      const rawChain = r.chain;
+      if (typeof rawChain === "string" && rawChain.trim()) {
+        const t = rawChain.trim();
+        if (t === "sui" || t === "solana" || t === "evm") chain = t;
+      } else if (cols.has("network") && typeof r.network === "string") {
+        const n = r.network.toLowerCase();
+        if (n.includes("solana")) chain = "solana";
+        else if (n.includes("evm") || n.includes("eth")) chain = "evm";
+      }
+
+      let accountId: string | null = null;
+      const rawAcc = r.account_id;
+      if (typeof rawAcc === "string" && rawAcc.trim() && accOk) {
+        const aid = rawAcc.trim();
+        if (accOk.get(aid) != null) accountId = aid;
+      }
+
+      const createdAt =
+        typeof r.created_at === "number" && Number.isFinite(r.created_at)
+          ? r.created_at
+          : Number(r.created_at) || Date.now();
+      const updatedAt =
+        typeof r.updated_at === "number" && Number.isFinite(r.updated_at)
+          ? r.updated_at
+          : Number(r.updated_at) || createdAt;
+
+      insert.run(id, accountId, name, address, chain, createdAt, updatedAt);
+    }
+
+    db.exec(`DROP TABLE contacts`);
+    db.exec(`ALTER TABLE contacts__fkstrip RENAME TO contacts`);
+    db.exec("COMMIT");
+  } catch (e) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+}
+
+/** Create contacts table and indexes; upgrade legacy schemas (missing `chain`, or orphan `network`). */
+export function ensureContactsTable(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY,
+      account_id TEXT,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+  `);
+
+  let cols = contactsColumnNames(db);
+  if (cols.size > 0 && !cols.has("chain")) {
+    db.exec(`ALTER TABLE contacts ADD COLUMN chain TEXT NOT NULL DEFAULT 'sui'`);
+    cols = contactsColumnNames(db);
+  }
+
+  if (cols.has("network")) {
+    if (!cols.has("chain")) {
+      db.exec(`ALTER TABLE contacts ADD COLUMN chain TEXT NOT NULL DEFAULT 'sui'`);
+      cols = contactsColumnNames(db);
+    }
+    db.exec(`
+      UPDATE contacts SET chain = CASE
+        WHEN lower(COALESCE(network, '')) LIKE '%solana%' THEN 'solana'
+        WHEN lower(COALESCE(network, '')) LIKE '%evm%'
+          OR lower(COALESCE(network, '')) LIKE '%eth%' THEN 'evm'
+        WHEN trim(COALESCE(chain, '')) != '' THEN chain
+        ELSE 'sui'
+      END
+    `);
+    try {
+      db.exec(`ALTER TABLE contacts DROP COLUMN network`);
+    } catch {
+      console.warn(
+        "[migrations] Could not DROP COLUMN contacts.network; add a default or recreate DB if inserts still fail.",
+      );
+    }
+  }
+
+  stripContactsTableForeignKeys(db);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_contacts_chain ON contacts (chain);
+    CREATE INDEX IF NOT EXISTS idx_contacts_address ON contacts (address);
+    CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts (name);
   `);
 }
 
@@ -149,4 +309,5 @@ export function runMigrations(db: DatabaseSync) {
   ensureWalletTables(db);
   ensureLlmModelTables(db);
   ensureAssistantChatTables(db);
+  ensureContactsTable(db);
 }

@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { getDatabase } from "./main/persistence/database";
+import { registerChainIpcHandlers } from "./main/ipc/registerChainIpcHandlers";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
@@ -33,6 +34,7 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   getDatabase();
+  registerChainIpcHandlers();
   registerWalletIpcHandlers();
   registerAiModelIpcHandlers();
   registerAssistantChatIpcHandlers();

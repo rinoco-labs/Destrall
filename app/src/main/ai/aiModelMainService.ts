@@ -12,7 +12,7 @@ import {
 } from "../../shared/ipc";
 import { getDatabase } from "../persistence/database";
 import { LlmModelRepository, type PersistedLlmModelInstall } from "../persistence/repositories/llmModelRepository";
-import { walletService } from "../wallet/walletService";
+import { chainFacadeService } from "../services/chains/chainFacadeService";
 import { assistantInferenceService, type ChatTurnMessage } from "./assistantInferenceService";
 import { modelDownloadService } from "./modelDownloadService";
 import { modelRuntimeService } from "./modelRuntimeService";
@@ -34,7 +34,7 @@ export class AiModelMainService {
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const run: Promise<T> = this.tail.then(() => fn());
-    this.tail = run.finally(() => {});
+    this.tail = run.finally(() => undefined);
     return run;
   }
 
@@ -376,18 +376,9 @@ export class AiModelMainService {
     }
   }
 
-  buildWalletContext(accountId: string): string {
+  async buildWalletContext(accountId: string): Promise<string> {
     try {
-      const status = walletService.getStatus();
-      const account = status.accounts.find((a) => a.id === accountId);
-      if (!account) {
-        return `No wallet account found for id ${accountId}.`;
-      }
-      return [
-        `Active account: ${account.name} (${account.id})`,
-        `Chain: ${account.chain}`,
-        `Address: ${account.address}`,
-      ].join("\n");
+      return await chainFacadeService.buildAssistantWalletContext(accountId);
     } catch {
       return "";
     }
@@ -400,7 +391,7 @@ export class AiModelMainService {
     personalityId: string;
   }): Promise<string> {
     const model = modelRuntimeService.getModelOrThrow();
-    const walletContext = this.buildWalletContext(payload.accountId);
+    const walletContext = await this.buildWalletContext(payload.accountId);
     return assistantInferenceService.generateReply({
       model,
       messages: payload.messages,

@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Pencil, Plus, Send, Trash2, Users, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { shortAddr } from "@/lib/wallet-store";
 import {
-  Contact,
-  loadContacts,
-  saveContacts,
-  shortAddr,
-} from "@/lib/wallet-store";
+  desktopListContacts,
+  desktopCreateContact,
+  desktopUpdateContact,
+  desktopDeleteContact,
+} from "@/lib/desktopContacts";
+import type { ContactRow } from "../../shared/ipc";
+import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
 
 export const Route = createFileRoute("/contacts")({
   component: ContactsPage,
@@ -21,57 +24,85 @@ export const Route = createFileRoute("/contacts")({
 
 function ContactsPage() {
   const navigate = useNavigate();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [editing, setEditing] = useState<Contact | null>(null);
+  const walletSnap = useWalletStore();
+  const activeAccount = useMemo(() => getActiveWalletAccount(walletSnap), [walletSnap]);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<ContactRow | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ContactRow | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setError(null);
+    try {
+      const list = await desktopListContacts(query.trim() || undefined);
+      setContacts(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load contacts");
+    }
+  }, [query]);
 
   useEffect(() => {
-    setContacts(loadContacts());
-  }, []);
-
-  const persist = (next: Contact[]) => {
-    setContacts(next);
-    saveContacts(next);
-  };
+    void reload();
+  }, [reload]);
 
   const openNew = () => {
     setEditing(null);
     setName("");
     setAddress("");
     setShowForm(true);
+    setError(null);
   };
 
-  const openEdit = (c: Contact) => {
+  const openEdit = (c: ContactRow) => {
     setEditing(c);
     setName(c.name);
     setAddress(c.address);
     setShowForm(true);
+    setError(null);
   };
 
-  const save = () => {
+  const save = async () => {
     const n = name.trim();
     const a = address.trim();
     if (!n || !a) return;
-    if (editing) {
-      persist(contacts.map((c) => (c.id === editing.id ? { ...c, name: n, address: a } : c)));
-    } else {
-      persist([...contacts, { id: crypto.randomUUID(), name: n, address: a }]);
+    setError(null);
+    try {
+      if (editing) {
+        await desktopUpdateContact({ id: editing.id, name: n, address: a });
+      } else {
+        await desktopCreateContact({
+          name: n,
+          address: a,
+          chain: "sui",
+          accountId: activeAccount?.id ?? null,
+        });
+      }
+      setShowForm(false);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save contact");
     }
-    setShowForm(false);
   };
 
-  const remove = (c: Contact) => {
-    persist(contacts.filter((x) => x.id !== c.id));
-    setConfirmDelete(null);
+  const remove = async (c: ContactRow) => {
+    setError(null);
+    try {
+      await desktopDeleteContact(c.id);
+      setConfirmDelete(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete");
+    }
   };
 
   return (
     <AppShell active="home">
       <div className="max-w-2xl mx-auto w-full">
-        <div className="flex items-center justify-between mb-6 gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <Link
               to="/home"
@@ -82,15 +113,30 @@ function ContactsPage() {
             </Link>
             <h1 className="text-2xl font-bold tracking-tight">Contacts</h1>
           </div>
-          <button
-            type="button"
-            onClick={openNew}
-            className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-sm font-semibold hover:opacity-95 transition"
-          >
-            <Plus className="w-4 h-4" />
-            Add contact
-          </button>
+          <div className="flex items-center gap-2 flex-1 sm:max-w-xs">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="flex-1 rounded-full border border-border bg-background/60 px-4 py-2 text-sm focus:outline-none focus:border-brand/60"
+            />
+            <button
+              type="button"
+              onClick={openNew}
+              className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-sm font-semibold hover:opacity-95 transition shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Add
+            </button>
+          </div>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
         {contacts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card/30 p-12 text-center">
@@ -98,9 +144,7 @@ function ContactsPage() {
               <Users className="w-6 h-6" />
             </div>
             <p className="font-semibold">No contacts yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Add a contact to send tokens faster next time.
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Add a contact to send tokens faster next time.</p>
           </div>
         ) : (
           <div className="rounded-2xl border border-border bg-card/40 backdrop-blur divide-y divide-border overflow-hidden">
@@ -114,6 +158,7 @@ function ContactsPage() {
                   <p className="text-xs text-muted-foreground font-mono truncate">
                     {shortAddr(c.address, 10, 6)}
                   </p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">{c.chain}</p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -156,9 +201,7 @@ function ContactsPage() {
         <Modal onClose={() => setShowForm(false)} title={editing ? "Edit contact" : "Add contact"}>
           <div className="space-y-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Name
-              </label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Name</label>
               <input
                 autoFocus
                 type="text"
@@ -169,9 +212,7 @@ function ContactsPage() {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Wallet address
-              </label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Sui address</label>
               <input
                 type="text"
                 value={address}
@@ -191,7 +232,7 @@ function ContactsPage() {
             </button>
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
               disabled={!name.trim() || !address.trim()}
               className="px-5 py-2 rounded-full bg-brand text-brand-foreground text-sm font-semibold hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
@@ -205,8 +246,7 @@ function ContactsPage() {
         <Modal onClose={() => setConfirmDelete(null)} title="Delete contact?">
           <p className="text-sm text-muted-foreground">
             This will permanently remove{" "}
-            <span className="text-foreground font-medium">{confirmDelete.name}</span> from your
-            contacts.
+            <span className="text-foreground font-medium">{confirmDelete.name}</span> from your contacts.
           </p>
           <div className="mt-6 flex items-center justify-end gap-2">
             <button
@@ -218,7 +258,7 @@ function ContactsPage() {
             </button>
             <button
               type="button"
-              onClick={() => remove(confirmDelete)}
+              onClick={() => void remove(confirmDelete)}
               className="px-5 py-2 rounded-full bg-destructive text-destructive-foreground text-sm font-semibold hover:opacity-90 transition"
             >
               Delete

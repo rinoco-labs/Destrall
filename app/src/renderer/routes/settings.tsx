@@ -15,6 +15,7 @@ import {
   Palette,
   Languages,
   Sparkles,
+  Globe,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ThemeSelector } from "@/components/settings/ThemeSelector";
@@ -34,6 +35,8 @@ import {
 } from "@/stores/settingsStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useWalletStore } from "@/stores/walletStore";
+import { useNetworkStore } from "@/stores/networkStore";
+import type { SuiChainEnvironment } from "../../config/chains/sui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,7 +92,7 @@ function SettingRow({ icon: Icon, label, value, destructive, highlight, onClick 
   );
 }
 
-type ModalKind = null | "language" | "currency" | "autoLock" | "aiModel" | "personality";
+type ModalKind = null | "language" | "currency" | "autoLock" | "aiModel" | "personality" | "network";
 
 function SettingsPage() {
   const { t } = useTranslation();
@@ -114,6 +117,14 @@ function SettingsPage() {
   const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
   const activeModelId = useAiModelStore((s) => s.activeModelId);
 
+  const initializeNetwork = useNetworkStore((s) => s.initializeNetworkState);
+  const network = useNetworkStore((s) => s.network);
+  const setSuiEnvironment = useNetworkStore((s) => s.setSuiEnvironment);
+
+  useEffect(() => {
+    void initializeNetwork();
+  }, [initializeNetwork]);
+
   useEffect(() => {
     void refreshAiModels();
   }, [refreshAiModels]);
@@ -131,6 +142,16 @@ function SettingsPage() {
     : t("settings.aiModelNone", "None selected");
   const personalityLabel =
     AI_PERSONALITIES.find((p) => p.id === aiPersonality)?.name ?? aiPersonality;
+
+  const networkLabel = network
+    ? `${network.activeEnvironment.charAt(0).toUpperCase()}${network.activeEnvironment.slice(1)}`
+    : "—";
+
+  const NETWORK_OPTIONS: { value: SuiChainEnvironment; label: string; description: string }[] = [
+    { value: "mainnet", label: "Mainnet", description: "Production Sui network" },
+    { value: "testnet", label: "Testnet", description: "Sui test network" },
+    { value: "devnet", label: "Devnet", description: "Sui developer network" },
+  ];
 
   const handleLock = async () => {
     await lockWallet();
@@ -198,6 +219,12 @@ function SettingsPage() {
             <span className="text-sm text-muted-foreground">{t("settings.manage")}</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
           </Link>
+          <SettingRow
+            icon={Globe}
+            label="Sui network"
+            value={networkLabel}
+            onClick={() => setOpenModal("network")}
+          />
           <SettingRow
             icon={DollarSign}
             label={t("settings.currency")}
@@ -371,6 +398,22 @@ function SettingsPage() {
           description: p.description,
         }))}
         onSelect={setAiPersonality}
+      />
+
+      <SelectModal<SuiChainEnvironment>
+        open={openModal === "network"}
+        onOpenChange={(o) => !o && setOpenModal(null)}
+        title="Sui network"
+        description="Balances, activity, sends, and assistant chain context use this RPC cluster."
+        value={network?.activeEnvironment ?? "mainnet"}
+        options={NETWORK_OPTIONS.map((o) => ({
+          value: o.value,
+          label: o.label,
+          description: o.description,
+        }))}
+        onSelect={(env) => {
+          void setSuiEnvironment(env);
+        }}
       />
 
       <RecoveryPhraseModal open={recoveryOpen} onOpenChange={setRecoveryOpen} />

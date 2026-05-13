@@ -6,6 +6,8 @@ import {
   type ModelProgressEvent,
   type WalletCreateRequest,
 } from "./shared/ipc";
+import type { ChainId } from "./shared/wallet/types";
+import type { SuiChainEnvironment } from "./config/chains/sui";
 
 const api: DestrallApi = {
   wallet: {
@@ -28,6 +30,42 @@ const api: DestrallApi = {
       ipcRenderer.invoke(IPCChannels.walletViewSeedPhrase, { password }),
     disconnect: () => ipcRenderer.invoke(IPCChannels.walletDisconnect),
     refresh: () => ipcRenderer.invoke(IPCChannels.walletRefresh),
+  },
+  chain: {
+    getNetworkState: () => ipcRenderer.invoke(IPCChannels.chainGetNetworkState),
+    setNetwork: (payload: { activeChain: ChainId; suiEnvironment: SuiChainEnvironment }) =>
+      ipcRenderer.invoke(IPCChannels.chainSetNetwork, payload),
+    getBalances: (accountId: string) => ipcRenderer.invoke(IPCChannels.chainGetBalances, accountId),
+    getActivity: (payload: { accountId: string; cursor?: string | null }) =>
+      ipcRenderer.invoke(IPCChannels.chainGetActivity, payload),
+    prepareTransfer: (payload: {
+      accountId: string;
+      recipient: string;
+      coinType: string;
+      amountDisplay: string;
+    }) => ipcRenderer.invoke(IPCChannels.chainPrepareTransfer, payload),
+    confirmTransfer: (payload: { transferRequestId: string }) =>
+      ipcRenderer.invoke(IPCChannels.chainConfirmTransfer, payload),
+    onNetworkChanged: (listener: () => void) => {
+      const channel = IPCChannels.chainNetworkChanged;
+      const wrapped = () => listener();
+      ipcRenderer.on(channel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(channel, wrapped);
+      };
+    },
+  },
+  contacts: {
+    list: (payload: { query?: string }) => ipcRenderer.invoke(IPCChannels.contactsList, payload ?? {}),
+    create: (payload: {
+      name: string;
+      address: string;
+      chain: ChainId;
+      accountId?: string | null;
+    }) => ipcRenderer.invoke(IPCChannels.contactsCreate, payload),
+    update: (payload: { id: string; name: string; address: string }) =>
+      ipcRenderer.invoke(IPCChannels.contactsUpdate, payload),
+    delete: (payload: { id: string }) => ipcRenderer.invoke(IPCChannels.contactsDelete, payload),
   },
   llm: {
     getState: () => ipcRenderer.invoke(IPCChannels.llmGetState),

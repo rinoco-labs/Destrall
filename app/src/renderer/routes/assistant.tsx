@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useWalletStore } from "@/stores/walletStore";
+import { useNetworkStore } from "@/stores/networkStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useAssistantChatStore } from "@/stores/assistantChatStore";
 import { isDestrallDesktop } from "@/lib/desktopWallet";
@@ -675,6 +676,7 @@ function ActionBubble({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const network = useNetworkStore((s) => s.network);
   const isExecuting = msg.status === "executing";
   const isDone = msg.status === "success";
 
@@ -858,18 +860,23 @@ function ActionBubble({
                 <div className="space-y-2">
                   <button
                     type="button"
+                    onClick={() => void navigator.clipboard.writeText(msg.digest)}
                     className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-sm font-bold text-brand hover:bg-brand/10 transition"
                   >
                     <Copy className="w-4 h-4" />
                     Copy digest · {msg.digest.slice(0, 8)}…{msg.digest.slice(-6)}
                   </button>
-                  <button
-                    type="button"
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-sm font-bold text-brand hover:bg-brand/10 transition"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    View on Suiscan
-                  </button>
+                  {network && (
+                    <a
+                      href={`${network.explorerBaseUrl}/tx/${encodeURIComponent(msg.digest)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-sm font-bold text-brand hover:bg-brand/10 transition"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View on explorer
+                    </a>
+                  )}
                 </div>
               )}
             </DialogContent>

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Download as ReceiveIcon,
@@ -10,6 +11,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
+import { useNetworkStore } from "@/stores/networkStore";
+import { desktopGetChainBalances } from "@/lib/desktopChain";
+import { shortAddr } from "@/lib/wallet-store";
+import { chainQueryScope } from "@/components/network-wallet-query-sync";
 
 export const Route = createFileRoute("/home")({
   component: Home,
@@ -32,22 +38,52 @@ function formatGenerated(date: Date) {
 
 function Home() {
   const [generatedAt, setGeneratedAt] = useState(() => new Date());
-  const [refreshing, setRefreshing] = useState(false);
+  const walletSnap = useWalletStore();
+  const activeAccount = useMemo(() => getActiveWalletAccount(walletSnap), [walletSnap]);
+  const network = useNetworkStore((s) => s.network);
 
-  const refresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setGeneratedAt(new Date());
-      setRefreshing(false);
-    }, 800);
+  const balancesQuery = useQuery({
+    queryKey: [
+      ...chainQueryScope,
+      "balances",
+      activeAccount?.id ?? "",
+      network?.activeEnvironment ?? "",
+    ],
+    queryFn: async () => {
+      if (!activeAccount) return [];
+      return desktopGetChainBalances(activeAccount.id);
+    },
+    enabled: Boolean(activeAccount?.id && network),
+  });
+
+  const refresh = async () => {
+    setGeneratedAt(new Date());
+    await balancesQuery.refetch();
   };
+
+  const suiRow = balancesQuery.data?.find((b) => b.coinType.endsWith("::sui::SUI"));
+  const otherTokens = balancesQuery.data?.filter((b) => !b.coinType.endsWith("::sui::SUI")) ?? [];
 
   return (
     <AppShell active="home">
-      <div className="text-center mb-8">
-        <p className="text-sm text-muted-foreground">Total Balance</p>
-        <p className="text-5xl font-bold mt-1">$0.00</p>
-        <p className="text-xs text-muted-foreground mt-1">Live on-chain balances</p>
+      <div className="text-center mb-6">
+        {activeAccount && (
+          <p className="text-xs text-muted-foreground font-mono mb-1">
+            {shortAddr(activeAccount.address, 8, 8)}
+          </p>
+        )}
+        {network && (
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+            {network.activeChain} · {network.activeEnvironment}
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">Total balance</p>
+        <p className="text-5xl font-bold mt-1">—</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {balancesQuery.isLoading
+            ? "Loading on-chain balances…"
+            : "USD pricing not configured — showing token amounts below."}
+        </p>
       </div>
 
       <div className="rounded-2xl border border-border bg-card/50 hover:border-brand/40 transition p-5 mb-6 flex items-start gap-4 group">
@@ -60,12 +96,14 @@ function Home() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={refresh}
-                disabled={refreshing}
-                aria-label="Refresh daily brief"
+                onClick={() => void refresh()}
+                disabled={balancesQuery.isRefetching}
+                aria-label="Refresh balances and brief"
                 className="w-7 h-7 rounded-full hover:bg-secondary/60 text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition disabled:opacity-50"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${balancesQuery.isRefetching ? "animate-spin" : ""}`}
+                />
               </button>
               <Link
                 to="/daily-brief"
@@ -79,19 +117,25 @@ function Home() {
           <p className="text-xs text-muted-foreground mb-2">
             Generated {formatGenerated(generatedAt)}
           </p>
-          <p className="text-sm text-muted-foreground line-clamp-1">
-            Portfolio steady at $0.00 — no new activity, low volatility today.
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {suiRow
+              ? `Native SUI: ${suiRow.balanceFormatted} ${suiRow.symbol}. ${otherTokens.length ? `${otherTokens.length} more token(s) on this account.` : "No other tokens detected."}`
+              : balancesQuery.isError
+                ? "Could not load balances. Check network settings and try again."
+                : "Connect your wallet data appears here once balances load."}
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {([
-          { label: "Send", icon: Send, to: "/send" },
-          { label: "Receive", icon: ReceiveIcon, to: "/receive" },
-          { label: "Contacts", icon: Users, to: "/contacts" },
-          { label: "Activity", icon: Activity, to: "/activity" },
-        ] as const).map(({ label, icon: Icon, to }) => (
+        {(
+          [
+            { label: "Send", icon: Send, to: "/send" },
+            { label: "Receive", icon: ReceiveIcon, to: "/receive" },
+            { label: "Contacts", icon: Users, to: "/contacts" },
+            { label: "Activity", icon: Activity, to: "/activity" },
+          ] as const
+        ).map(({ label, icon: Icon, to }) => (
           <Link
             key={label}
             to={to}
@@ -104,14 +148,24 @@ function Home() {
       </div>
 
       <div className="rounded-2xl border border-border bg-card/40 divide-y divide-border">
-        {[
-          { chain: "SOLANA", amount: "0 SOL" },
-          { chain: "SUI", amount: "0 SUI" },
-        ].map((b) => (
-          <div key={b.chain} className="p-5">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">{b.chain}</p>
-            <p className="text-lg font-semibold mt-1">{b.amount}</p>
-            <p className="text-sm text-muted-foreground">No token balances</p>
+        {balancesQuery.isLoading && (
+          <div className="p-5 text-sm text-muted-foreground">Loading balances…</div>
+        )}
+        {balancesQuery.isError && (
+          <div className="p-5 text-sm text-destructive">
+            {(balancesQuery.error as Error)?.message ?? "Failed to load balances"}
+          </div>
+        )}
+        {!balancesQuery.isLoading && !balancesQuery.isError && (balancesQuery.data?.length ?? 0) === 0 && (
+          <div className="p-5 text-sm text-muted-foreground">No token balances on this account yet.</div>
+        )}
+        {(balancesQuery.data ?? []).map((b) => (
+          <div key={b.coinType} className="p-5">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">{b.symbol}</p>
+            <p className="text-lg font-semibold mt-1">
+              {b.balanceFormatted} {b.symbol}
+            </p>
+            <p className="text-sm text-muted-foreground font-mono text-xs truncate">{b.coinType}</p>
           </div>
         ))}
       </div>
