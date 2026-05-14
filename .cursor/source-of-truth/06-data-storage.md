@@ -11,7 +11,7 @@
 SQLite holds **small, structured** rows:
 
 - Wallet **metadata** (account labels, settings pointers—not cleartext keys).
-- Assistant chats, threads, Daily Brief records, model selection metadata.
+- Assistant chats, threads, Daily Brief records, assistant AI install metadata (single logical model id).
 - Installed package index: **validated** manifest snapshots, versions, enable flags.
 - Transaction/activity **cache** and denormalized labels.
 - Contacts, RPC preferences, UI settings as designed.
@@ -25,8 +25,8 @@ SQLite holds **small, structured** rows:
 
 ## Model File Storage
 
-- **GGUF** (and similar) models: **file-based** under e.g. `~/.destrall/models/<modelId>/...`.
-- SQLite may store: path, checksum, size, install state, selected model id.
+- **GGUF** (and similar) models: **file-based** under e.g. `~/.destrall/models/` (flat or per-product layout).
+- SQLite may store: path, checksum, size, install state for the **built-in** assistant model (stable internal id).
 
 ## Package Registry Storage
 

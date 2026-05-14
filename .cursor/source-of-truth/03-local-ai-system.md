@@ -15,11 +15,11 @@ The **local AI assistant** helps users understand their wallet, summarize activi
 - Models are **files on disk**, not BLOBs inside SQLite.
 - Install flow: download or import → verify checksum/size policy → register in local metadata.
 
-## Model Install and Selection
+## Model Install (single built-in assistant)
 
-- **Install**: User-initiated; progress events can surface to UI via IPC.
-- **Selection**: Persist **selected model id** and install metadata in **SQLite** (small rows only).
-- Changing models must not leak prior conversation secrets into new model files; conversation storage rules apply per `06-data-storage.md`.
+- **Install**: User-initiated download of one on-device GGUF bundle; progress events surface to UI via IPC.
+- **Persistence**: Persist install metadata (paths, status, timestamps) in **SQLite** under a stable internal logical id (not user-selectable).
+- Replacing weights in a future version must follow migration notes so conversation storage rules in `06-data-storage.md` stay consistent.
 
 ## SQLite Persistence (AI-Related)
 
@@ -43,6 +43,8 @@ Context builders attach **non-secret** or **explicitly approved** snapshots to t
 - Public addresses, chain ids, token symbols, recent activity labels.
 - User-approved package read results.
 - **Never** attach private keys, seed phrases, or raw signing material.
+
+**System prompt (single source of truth):** assistant identity, safety rules, and finance-copilot behavior live in `app/src/assistant/systemPrompt.ts` (`buildDestrallAssistantSystemPrompt`). Runtime context assembly is **`app/src/assistant/contextBuilder.ts`** (`buildCompactAssistantContext`) using **`app/src/assistant/cache/assistantDataCache.ts`** (TTL + stale-while-revalidate for balances, activity, Navi pools, positions). Deterministic routing (cards first, optional LLM skip) lives in **`app/src/assistant/intentPlanner.ts`** (`planAssistantStructuredTurn`). Portfolio heuristics remain in `app/src/assistant/recommendationEngine.ts` / `portfolio-analysis.service.ts` — avoid duplicating long prompt text elsewhere.
 
 ## Context Providers
 

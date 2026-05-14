@@ -17,7 +17,7 @@ This document bounds **v1** so implementation stays coherent. Features not liste
 ### Local AI
 
 - **Local AI chat** using on-device inference (e.g. **node-llama-cpp**).
-- **Local model install** and **model selection**; models stored as **files** under user data (e.g. `~/.destrall/models/`).
+- **Local model install** for a **single built-in** on-device assistant model; weights stored as **files** under user data (e.g. `~/.destrall/models/`).
 - **Daily Brief** using wallet-aware, **local** context.
 - **Wallet-aware assistant context** via trusted context providers (non-secret snapshots).
 - **Structured intents** validated before any sensitive work.
