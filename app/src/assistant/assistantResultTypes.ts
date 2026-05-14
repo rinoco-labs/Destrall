@@ -130,6 +130,44 @@ export type SwapProposalResult = {
   card: AssistantProposalCard;
 };
 
+/** Active account Sui address (read-only card with copy). */
+export type WalletAddressResult = {
+  type: "wallet_address";
+  network: string;
+  accountLabel: string;
+  address: string;
+};
+
+/**
+ * Staged swap then Navi deposit: only the embedded swap is executable today.
+ * Deposit uses expected post-swap amount (approximate until swap confirms).
+ */
+export type CompositeSwapThenDepositResult = {
+  type: "composite_swap_then_deposit";
+  compositeId: string;
+  executionModel: "staged";
+  swapProposal: SwapProposalResult;
+  depositPreview: {
+    asset: string;
+    amountDisplay: string;
+    poolLabel: string;
+    apyText?: string;
+  };
+  riskNotes: string[];
+};
+
+export type RebalanceProposalResult = {
+  type: "rebalance_proposal";
+  proposalId: string;
+  network: string;
+  currentPct: { symbol: string; pct: string; valueUsd?: string }[];
+  targetPct: { symbol: string; pct: string }[];
+  swaps: { fromSymbol: string; toSymbol: string; amountDisplay: string; note?: string }[];
+  gasNote?: string;
+  dustSkipped?: string[];
+  riskNotes: string[];
+};
+
 export type SwapExecutionResultResult = {
   type: "swap_execution_result";
   title: string;
@@ -185,6 +223,7 @@ export type AssistantErrorResult = {
 
 export type AssistantStructuredResult =
   | PortfolioSummaryResult
+  | WalletAddressResult
   | YieldPositionsResult
   | AvailableYieldPoolsResult
   | SwappableTokensResult
@@ -193,6 +232,8 @@ export type AssistantStructuredResult =
   | SwapProposalResult
   | NaviDepositProposalResult
   | NaviWithdrawProposalResult
+  | CompositeSwapThenDepositResult
+  | RebalanceProposalResult
   | TransactionResultResult
   | SwapExecutionResultResult
   | YieldExecutionResultResult

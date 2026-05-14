@@ -70,6 +70,13 @@ export type WalletPayload =
       concentrationNote?: string;
     }
   | {
+      view: "wallet_address";
+      title: string;
+      network: string;
+      accountLabel: string;
+      address: string;
+    }
+  | {
       view: "yield";
       title: string;
       network: string;
@@ -114,6 +121,18 @@ export type ProtocolPayload =
       source: string;
       coins: ProtocolCoin[];
       emptyHint?: string;
+    }
+  | {
+      view: "rebalance";
+      title: string;
+      source: string;
+      network: string;
+      currentPct: { symbol: string; pct: string; valueUsd?: string }[];
+      targetPct: { symbol: string; pct: string }[];
+      swaps: { fromSymbol: string; toSymbol: string; amountDisplay: string; note?: string }[];
+      riskNotes: string[];
+      gasNote?: string;
+      dustSkipped?: string[];
     };
 
 export type ChatActionBubbleMessage = {
@@ -372,7 +391,71 @@ function HoldingRow({ h }: { h: WalletHolding }) {
   );
 }
 
+function WalletAddressInner({
+  network,
+  accountLabel,
+  address,
+}: {
+  network: string;
+  accountLabel: string;
+  address: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <div className="flex justify-start">
+      <div
+        className="w-full max-w-md rounded-2xl border border-brand/40 bg-card/60 overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(160deg, color-mix(in oklab, var(--brand) 8%, var(--card)) 0%, var(--card) 60%)",
+        }}
+      >
+        <div className="flex items-center gap-3 p-4 border-b border-border/60">
+          <div className="w-9 h-9 rounded-xl border border-brand/40 bg-brand/10 text-brand flex items-center justify-center shrink-0">
+            <Wallet className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-brand uppercase">Wallet address</p>
+            <p className="text-sm font-semibold truncate">{accountLabel}</p>
+            <p className="text-xs text-muted-foreground">{network}</p>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs font-mono break-all text-foreground leading-relaxed">{address}</p>
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm font-semibold hover:bg-background/90 transition"
+          >
+            <Copy className="w-4 h-4" />
+            {copied ? "Copied" : "Copy address"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WalletBubble({ payload }: { payload: WalletPayload }) {
+  if (payload.view === "wallet_address") {
+    return (
+      <WalletAddressInner
+        network={payload.network}
+        accountLabel={payload.accountLabel}
+        address={payload.address}
+      />
+    );
+  }
+
   const Icon = payload.view === "portfolio" ? PieChart : Sprout;
   const [open, setOpen] = useState(false);
   const holdings = payload.view === "portfolio" ? payload.holdings : [];
@@ -521,6 +604,81 @@ function CoinRow({ c }: { c: ProtocolCoin }) {
 }
 
 export function ProtocolBubble({ payload }: { payload: ProtocolPayload }) {
+  if (payload.view === "rebalance") {
+    return (
+      <div className="flex justify-start">
+        <div
+          className="w-full max-w-md rounded-2xl border border-violet-500/40 bg-card/60 overflow-hidden"
+          style={{
+            background:
+              "linear-gradient(160deg, color-mix(in oklab, oklch(0.65 0.18 290) 10%, var(--card)) 0%, var(--card) 60%)",
+          }}
+        >
+          <div className="flex items-center gap-3 p-4 border-b border-border/60">
+            <div className="w-9 h-9 rounded-xl border border-violet-500/40 bg-violet-500/10 text-violet-600 flex items-center justify-center shrink-0">
+              <PieChart className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold tracking-[0.18em] text-violet-600 uppercase">Rebalance</p>
+              <p className="text-sm font-semibold truncate">{payload.title}</p>
+              <p className="text-xs text-muted-foreground">{payload.network}</p>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600">{payload.source}</span>
+          </div>
+          <div className="px-4 py-3 space-y-3 text-sm">
+            <div>
+              <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Current (priced)</p>
+              <ul className="mt-1 space-y-1 text-xs">
+                {payload.currentPct.map((r) => (
+                  <li key={r.symbol} className="flex justify-between gap-2">
+                    <span className="font-semibold">{r.symbol}</span>
+                    <span className="text-muted-foreground">
+                      {r.pct}
+                      {r.valueUsd ? ` · ${r.valueUsd}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Target</p>
+              <ul className="mt-1 space-y-1 text-xs">
+                {payload.targetPct.map((r) => (
+                  <li key={r.symbol} className="flex justify-between gap-2">
+                    <span className="font-semibold">{r.symbol}</span>
+                    <span className="text-muted-foreground">{r.pct}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Suggested swaps</p>
+              <ul className="mt-1 space-y-2 text-xs">
+                {payload.swaps.map((s, i) => (
+                  <li key={`${s.fromSymbol}-${s.toSymbol}-${i}`} className="rounded-lg border border-border/50 bg-background/40 p-2">
+                    <span className="font-semibold">
+                      {s.amountDisplay} {s.fromSymbol} → {s.toSymbol}
+                    </span>
+                    {s.note ? <p className="text-muted-foreground mt-1">{s.note}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {payload.gasNote ? <p className="text-xs text-muted-foreground">{payload.gasNote}</p> : null}
+            {payload.dustSkipped?.length ? (
+              <p className="text-[11px] text-muted-foreground">{payload.dustSkipped.join(" ")}</p>
+            ) : null}
+            <ul className="text-[11px] text-muted-foreground space-y-1 list-disc pl-4">
+              {payload.riskNotes.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const Icon = payload.view === "pools" ? Network : ArrowLeftRight;
   const [open, setOpen] = useState(false);
   const total = payload.view === "pools" ? payload.pools.length : payload.coins.length;

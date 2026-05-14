@@ -337,16 +337,32 @@ export function AssistantStructuredMessageRenderer({
   return (
     <div className="space-y-3">
       {blocks.map((b, i) => (
-        <Fragment key={"proposalId" in b ? b.proposalId : `${b.type}-${i}`}>
+        <Fragment
+          key={
+            b.type === "composite_swap_then_deposit"
+              ? b.compositeId
+              : "proposalId" in b && typeof b.proposalId === "string"
+                ? b.proposalId
+                : `${b.type}-${i}`
+          }
+        >
           <StructuredBlockView
             accountId={accountId}
             chatId={chatId}
             messageId={messageId}
             block={b}
             onApprove={() => {
+              if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
+                void handleApprove(b.swapProposal);
+                return;
+              }
               if (isProposalStructuredResult(b) && b.status === "pending") void handleApprove(b);
             }}
             onReject={() => {
+              if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
+                void handleReject(b.swapProposal.proposalId);
+                return;
+              }
               if (isProposalStructuredResult(b) && b.status === "pending") void handleReject(b.proposalId);
             }}
             onReloadThread={onReloadThread}
@@ -480,6 +496,18 @@ function StructuredBlockView({
         />
       );
     }
+    case "wallet_address":
+      return (
+        <WalletBubble
+          payload={{
+            view: "wallet_address",
+            title: "Wallet address",
+            network: block.network,
+            accountLabel: block.accountLabel,
+            address: block.address,
+          }}
+        />
+      );
     case "yield_positions":
       return (
         <WalletBubble
@@ -561,6 +589,47 @@ function StructuredBlockView({
           msg={proposalToActionMessage(messageId, block)}
           onApprove={onApprove}
           onReject={onReject}
+        />
+      );
+    case "composite_swap_then_deposit": {
+      return (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-sky-500/35 bg-card/50 p-4 space-y-2 text-sm max-w-md">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-sky-600 uppercase">Staged swap → deposit</p>
+            <p className="text-xs text-muted-foreground">
+              Step 1: approve the swap on the card below. Step 2 (after the swap confirms on-chain): prepare a Navi
+              deposit of ~{block.depositPreview.amountDisplay} {block.depositPreview.asset} into {block.depositPreview.poolLabel}
+              {block.depositPreview.apyText ? ` (${block.depositPreview.apyText})` : ""} so amounts match your wallet.
+            </p>
+            <ul className="text-xs space-y-1 list-disc pl-4 text-muted-foreground">
+              {block.riskNotes.map((r, idx) => (
+                <li key={idx}>{r}</li>
+              ))}
+            </ul>
+          </div>
+          <ActionBubble
+            msg={proposalToActionMessage(messageId, block.swapProposal)}
+            onApprove={onApprove}
+            onReject={onReject}
+          />
+        </div>
+      );
+    }
+    case "rebalance_proposal":
+      return (
+        <ProtocolBubble
+          payload={{
+            view: "rebalance",
+            title: "Rebalance plan",
+            source: "Destrall planner",
+            network: block.network,
+            currentPct: block.currentPct,
+            targetPct: block.targetPct,
+            swaps: block.swaps,
+            riskNotes: block.riskNotes,
+            gasNote: block.gasNote,
+            dustSkipped: block.dustSkipped,
+          }}
         />
       );
     case "transaction_result":

@@ -5,6 +5,10 @@
 
 export const PREPARE_SEND_ACTION_NAME = "core.wallet.send.prepare_send";
 
+export const GET_WALLET_ADDRESS_ACTION_NAME = "core.wallet.send.get_wallet_address";
+
+export const GET_PORTFOLIO_SUMMARY_ACTION_NAME = "core.portfolio.get_summary";
+
 export const LIST_SWAPPABLE_TOKENS_ACTION_NAME = "core.swap.aftermath.list_swappable_tokens";
 
 export const PREPARE_SWAP_ACTION_NAME = "core.swap.aftermath.prepare_swap";
@@ -16,6 +20,10 @@ export const GET_YIELD_POSITIONS_ACTION_NAME = "core.yield.navi.get_yield_positi
 export const PREPARE_YIELD_DEPOSIT_ACTION_NAME = "core.yield.navi.prepare_yield_deposit";
 
 export const PREPARE_YIELD_WITHDRAW_ACTION_NAME = "core.yield.navi.prepare_yield_withdraw";
+
+export const SWAP_THEN_DEPOSIT_ACTION_NAME = "core.composite.swap_then_deposit";
+
+export const PREPARE_REBALANCE_ACTION_NAME = "core.rebalance.prepare_rebalance";
 
 export const prepareSendFunctionSchema = {
   name: PREPARE_SEND_ACTION_NAME,
@@ -99,6 +107,7 @@ export const listYieldPoolsFunctionSchema = {
     properties: {
       asset: { type: "string", description: "Optional filter by asset symbol." },
       sortBy: { type: "string", description: "Optional: apy | tvl | risk" },
+      limit: { type: "number", description: "Optional max number of pools to return (1–50)." },
       riskProfile: {
         type: "string",
         description: "Optional: conservative | balanced | aggressive | max_yield",
@@ -153,6 +162,40 @@ export const prepareYieldWithdrawFunctionSchema = {
   },
 } as const;
 
+export const prepareRebalanceFunctionSchema = {
+  name: PREPARE_REBALANCE_ACTION_NAME,
+  description:
+    "Build a rebalance plan from natural-language target weights (read-only plan card; swaps are prepared separately).",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      distributionText: {
+        type: "string",
+        description: 'User text with percents, e.g. "30% SUI, 10% WAL, 20% DEEP and the rest in USDC".',
+      },
+    },
+    required: ["distributionText"],
+  },
+} as const;
+
+export const swapThenDepositFunctionSchema = {
+  name: SWAP_THEN_DEPOSIT_ACTION_NAME,
+  description:
+    "Prepare staged swap then Navi deposit when the wallet holds a different asset than the pool (swap first, deposit after confirmation).",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      spendSymbol: { type: "string", description: "Token symbol to spend from the wallet (e.g. USDC)." },
+      poolAssetSymbol: { type: "string", description: "Navi pool / supply asset symbol (e.g. DEEP)." },
+      amount: { type: "string", description: "Human amount or percentage string." },
+      amountKind: { type: "string", description: "absolute | percentage" },
+    },
+    required: ["spendSymbol", "poolAssetSymbol", "amount", "amountKind"],
+  },
+} as const;
+
 export const assistantToolDefinitionsForModel = [
   prepareSendFunctionSchema,
   listSwappableTokensFunctionSchema,
@@ -161,4 +204,6 @@ export const assistantToolDefinitionsForModel = [
   getYieldPositionsFunctionSchema,
   prepareYieldDepositFunctionSchema,
   prepareYieldWithdrawFunctionSchema,
+  swapThenDepositFunctionSchema,
+  prepareRebalanceFunctionSchema,
 ];

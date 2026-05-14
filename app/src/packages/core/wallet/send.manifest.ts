@@ -18,5 +18,12 @@ export const walletSendPackageManifest: CorePackageManifest = {
         recipient: "string",
       },
     },
+    {
+      name: "get_wallet_address",
+      description: "Show the active Sui account address (read-only).",
+      type: "read_state",
+      requiresConfirmation: false,
+      inputSchema: {},
+    },
   ],
 };

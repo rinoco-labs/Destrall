@@ -63,6 +63,11 @@ export function sortPoolsForRiskProfile(
     return copy;
   }
 
+  if (sortBy === "apy") {
+    copy.sort((a, b) => b.supplyApy - a.supplyApy || riskOrder(b.risk) - riskOrder(a.risk));
+    return copy;
+  }
+
   if (sortBy === "risk") {
     copy.sort((a, b) => riskOrder(a.risk) - riskOrder(b.risk) || b.supplyApy - a.supplyApy);
     return copy;

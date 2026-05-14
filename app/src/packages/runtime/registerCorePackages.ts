@@ -2,6 +2,9 @@ import { registerWalletSendPackage } from "../core/wallet/send.package";
 import { registerContactsPackage } from "../core/contacts/contacts.package";
 import { registerSwapAftermathPackage } from "../core/swap/swap.package";
 import { registerNaviYieldPackage } from "../core/yield/navi/navi.package";
+import { registerCompositePackage } from "../core/composite/composite.package";
+import { registerRebalancePackage } from "../core/rebalance/rebalance.package";
+import { registerPortfolioPackage } from "../core/portfolio/portfolio.package";
 
 let registered = false;
 
@@ -13,4 +16,7 @@ export function registerCorePackages() {
   registerContactsPackage();
   registerSwapAftermathPackage();
   registerNaviYieldPackage();
+  registerCompositePackage();
+  registerRebalancePackage();
+  registerPortfolioPackage();
 }

@@ -17,6 +17,7 @@ export const naviYieldPackageManifest: CorePackageManifest = {
         asset: "optional_string",
         sortBy: "optional_string",
         riskProfile: "optional_string",
+        limit: "optional_number",
       },
     },
     {

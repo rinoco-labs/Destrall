@@ -1,4 +1,8 @@
-import type { AssistantMessageMetadataV1, AssistantStructuredResult } from "./assistantResultTypes";
+import type {
+  AssistantMessageMetadataV1,
+  AssistantStructuredResult,
+  SwapProposalResult,
+} from "./assistantResultTypes";
 
 export function parseAssistantMessageMetadata(raw: string | null | undefined): AssistantStructuredResult[] {
   if (raw == null || raw === "") return [];
@@ -29,6 +33,12 @@ export function patchStructuredProposal(
   const next = blocks.map((b) => {
     if ("proposalId" in b && b.proposalId === proposalId) {
       return { ...b, ...patch } as AssistantStructuredResult;
+    }
+    if (b.type === "composite_swap_then_deposit" && b.swapProposal.proposalId === proposalId) {
+      return {
+        ...b,
+        swapProposal: { ...b.swapProposal, ...patch } as SwapProposalResult,
+      } as AssistantStructuredResult;
     }
     return b;
   });

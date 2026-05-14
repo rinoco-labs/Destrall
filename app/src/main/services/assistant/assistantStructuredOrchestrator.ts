@@ -9,8 +9,9 @@ export { planAssistantStructuredTurn } from "../../../assistant/intentPlanner";
 export async function buildAssistantStructuredBlocks(
   accountId: string,
   userText: string,
+  chatId?: string,
 ): Promise<{ blocks: AssistantStructuredResult[]; systemAddendum: string }> {
-  const plan = await planAssistantStructuredTurn(accountId, userText);
+  const plan = await planAssistantStructuredTurn(accountId, userText, { chatId });
   if (plan.mode === "deterministic") {
     return { blocks: plan.blocks, systemAddendum: "" };
   }

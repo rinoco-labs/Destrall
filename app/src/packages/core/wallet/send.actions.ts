@@ -138,7 +138,7 @@ export async function prepareSendAction(
     return [
       {
         type: "error",
-        message: `Could not resolve recipient "${resolved.query}". Try a full Sui address or add a matching contact.`,
+        message: `No contact matched "${resolved.query}". Paste a full Sui address, or add a contact in Contacts, then try again.`,
         code: "unknown_recipient",
       },
     ];
@@ -216,4 +216,26 @@ export async function prepareSendAction(
     const msg = e instanceof Error ? e.message : "Could not prepare transfer.";
     return [{ type: "error", message: msg, code: "prepare_transfer_failed" }];
   }
+}
+
+/**
+ * Read-only: active Sui account address for assistant cards (never returns secrets).
+ */
+export async function getWalletAddressAction(
+  _input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const account = ctx.wallet.getActiveAccount();
+  if (!account || account.chain !== "sui") {
+    return [{ type: "error", message: "Switch to a Sui account to show an address.", code: "unsupported_chain" }];
+  }
+  const net = ctx.network.getActiveNetwork();
+  return [
+    {
+      type: "wallet_address",
+      network: net.displayName,
+      accountLabel: account.name,
+      address: account.address,
+    },
+  ];
 }

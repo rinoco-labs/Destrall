@@ -21,6 +21,7 @@ const assistantChatSchema = z.object({
     }),
   ),
   accountId: z.string().min(1),
+  chatId: z.string().min(1).max(128).optional(),
   language: z.string(),
   personalityId: z.string(),
   pendingProposalsSummary: z.string().max(4000).optional(),

@@ -322,6 +322,7 @@ export const useAssistantChatStore = create<AssistantChatStoreState>((set, get) 
       const reply = await useAiModelStore.getState().sendMessage({
         messages: turns,
         accountId,
+        chatId: cid,
         language,
         personalityId,
         pendingProposalsSummary,

@@ -13,6 +13,9 @@ import { walletSendPackageManifest } from "../core/wallet/send.manifest";
 import { contactsPackageManifest } from "../core/contacts/contacts.manifest";
 import { swapAftermathPackageManifest } from "../core/swap/swap.manifest";
 import { naviYieldPackageManifest } from "../core/yield/navi/navi.manifest";
+import { compositePackageManifest } from "../core/composite/composite.manifest";
+import { rebalancePackageManifest } from "../core/rebalance/rebalance.manifest";
+import { portfolioPackageManifest } from "../core/portfolio/portfolio.manifest";
 
 const handlers = new Map<string, PackageActionHandler>();
 
@@ -21,6 +24,9 @@ const CORE_MANIFESTS: Record<string, CorePackageManifest> = {
   [contactsPackageManifest.id]: contactsPackageManifest,
   [swapAftermathPackageManifest.id]: swapAftermathPackageManifest,
   [naviYieldPackageManifest.id]: naviYieldPackageManifest,
+  [compositePackageManifest.id]: compositePackageManifest,
+  [rebalancePackageManifest.id]: rebalancePackageManifest,
+  [portfolioPackageManifest.id]: portfolioPackageManifest,
 };
 
 /** Core packages grant their declared permissions in full (installer UX can narrow later). */

@@ -1,9 +1,5 @@
-import type { SuiChainEnvironment } from "../config/chains/sui";
 import type { AssistantStructuredResult } from "./assistantResultTypes";
-import {
-  classifySwapUserMessage,
-  tryRouteAssistantToolCall,
-} from "./assistantToolRouter";
+import { classifySwapUserMessage, tryRouteAssistantToolCall } from "./assistantToolRouter";
 import { executePackageAction } from "../packages/runtime/actionExecutor";
 import { networkSettingsService } from "../main/services/network/networkSettingsService";
 import { walletService } from "../main/wallet/walletService";
@@ -17,14 +13,35 @@ import {
 } from "./yield-recommendation.service";
 import { readStoredYieldRiskProfile, isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.service";
 import { shouldUseDeterministicAssistantReply } from "./actionResolver";
-import { LIST_YIELD_POOLS_ACTION_NAME } from "./assistantFunctionSchemas";
+import {
+  GET_WALLET_ADDRESS_ACTION_NAME,
+  LIST_YIELD_POOLS_ACTION_NAME,
+  PREPARE_REBALANCE_ACTION_NAME,
+  PREPARE_YIELD_DEPOSIT_ACTION_NAME,
+  SWAP_THEN_DEPOSIT_ACTION_NAME,
+} from "./assistantFunctionSchemas";
 import { recordYieldOptimizationQuery, formatActivityCaption } from "./behaviorMemoryStore";
+import {
+  getConversationContext,
+  setConversationContext,
+  clearConversationField,
+} from "./conversationContextStore";
+import { parseRebalanceTargets } from "../packages/core/rebalance/rebalancePlanner";
 
 function normalizeUserText(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
+function isWalletAddressQuestion(lower: string): boolean {
+  return (
+    /\b(what\s+is\s+my\s+(?:sui\s+)?wallet\s+address|my\s+wallet\s+address|show\s+my\s+address|copy\s+my\s+address|what\s+address\s+am\s+i\s+using|what\s+is\s+this\s+account\s+address|my\s+public\s+address|my\s+sui\s+address)\b/.test(
+      lower,
+    ) || /\b(show|copy)\s+my\s+(wallet\s+)?address\b/.test(lower)
+  );
+}
+
 function isPortfolioOrBalanceQuestion(lower: string): boolean {
+  if (isWalletAddressQuestion(lower)) return false;
   if (/\bnavi\b/.test(lower) && /\b(pool|pools|yield|apy|lend|deposit)\b/.test(lower)) {
     return false;
   }
@@ -34,22 +51,35 @@ function isPortfolioOrBalanceQuestion(lower: string): boolean {
       lower,
     ) ||
     /\b(show|list)\s+(my\s+)?(balance|balances|holdings|portfolio|tokens|assets|wallet)\b/.test(lower) ||
+    /\bwhat\s+is\s+in\s+my\s+wallet\b|\bwhat\s+tokens\s+do\s+i\s+have\b|\bwallet\s+balance\b/.test(lower) ||
     /\bportfolio\b|\bholdings\b|\bmy tokens\b|\bwhat assets\b|\bportfolio worth\b|\bbalances?\b/.test(lower)
   );
 }
 
+function isPureBestApyQuestion(lower: string): boolean {
+  return /\b(what\s+is\s+the\s+best\s+apy|best\s+apy|highest\s+apy|what\s+pool\s+has\s+the\s+best\s+apy|where\s+can\s+i\s+get\s+the\s+most\s+yield|what\s+is\s+the\s+pool\s+with\s+the\s+best\s+apy)\b/.test(
+    lower,
+  );
+}
+
 function isYieldOptimizationQuestion(lower: string): boolean {
+  if (isPureBestApyQuestion(lower)) return false;
   return (
     /\b(maxim(?:ize|ise)|optimi(?:ze|se)|boost)\s+(?:my\s+)?(?:yield|apy|returns?)\b/.test(lower) ||
     (/\b(i\s+)?want\s+to\s+\b/.test(lower) &&
       /\b(maxim|maximise|maximize|boost)\b/.test(lower) &&
       /\b(yield|apy|returns?)\b/.test(lower)) ||
-    /\b(best\s+yield|highest\s+apy|where\s+should\s+i\s+put\s+.*\b(yield|funds?)|max(?:imum)?\s+yield)\b/.test(lower)
+    /\b(best\s+yield|where\s+should\s+i\s+put\s+.*\b(yield|funds?)|max(?:imum)?\s+yield)\b/.test(lower)
   );
 }
 
 function isActivityQuestion(lower: string): boolean {
   return /\b(show\s+)?(my\s+)?(recent\s+)?(activity|transactions|txs?|history)\b/.test(lower);
+}
+
+function isLooseRebalanceAsk(lower: string): boolean {
+  if (/\d+\s*%/.test(lower)) return false;
+  return /\b(rebalance\s+my\s+portfolio|rebalance|adjust\s+my\s+allocation)\b/.test(lower);
 }
 
 function captionForBlocks(
@@ -73,6 +103,12 @@ function captionForBlocks(
       const n = head.assets.length;
       return `Portfolio on ${head.network}: ${n} asset(s) with live balances on the card${head.totalUsd ? ` (~$${head.totalUsd} priced)` : ""}.`;
     }
+    case "wallet_address":
+      return `Active address on ${head.network} (${head.accountLabel}) — use copy on the card.`;
+    case "rebalance_proposal":
+      return `Rebalance plan on ${head.network}: ${head.swaps.length} suggested swap leg(s) on the card — each swap still needs its own approval.`;
+    case "composite_swap_then_deposit":
+      return "Staged swap then deposit: approve the swap on the card first; deposit uses the quoted receive amount as an estimate.";
     case "send_proposal":
     case "swap_proposal":
     case "navi_deposit_proposal":
@@ -95,16 +131,24 @@ export type AssistantStructuredPlan =
   | { mode: "deterministic"; blocks: AssistantStructuredResult[]; caption: string }
   | { mode: "llm"; blocks: AssistantStructuredResult[]; systemAddendum: string };
 
+export type PlanAssistantStructuredOptions = {
+  chatId?: string;
+  pendingProposalsSummary?: string;
+};
+
 /**
  * Deterministic planner: builds structured cards and decides whether the local LLM is needed.
  */
 export async function planAssistantStructuredTurn(
   accountId: string,
   userText: string,
+  options?: PlanAssistantStructuredOptions,
 ): Promise<AssistantStructuredPlan> {
   const text = normalizeUserText(userText);
   const lower = text.toLowerCase();
   const env = networkSettingsService.getSuiEnvironment();
+  const chatId = (options?.chatId && options.chatId.trim()) || "_default";
+  const convo = getConversationContext(accountId, chatId);
 
   const account = walletService.getWalletAccount(accountId);
   if (!account || account.chain !== "sui") {
@@ -140,13 +184,52 @@ export async function planAssistantStructuredTurn(
     };
   }
 
-  if (isActivityQuestion(lower)) {
-    const items = await assistantDataCache.getActivityPreview(accountId);
-    return {
-      mode: "deterministic",
-      blocks: [],
-      caption: formatActivityCaption(items, networkLabel),
-    };
+  if (options?.pendingProposalsSummary?.trim() && lower.length < 96) {
+    if (/\b(yes|yep|approve|approved|confirm|ok|go\s+ahead|reject|no|cancel|dismiss|discard)\b/i.test(lower)) {
+      return {
+        mode: "deterministic",
+        blocks: [],
+        caption:
+          "Use Approve or Dismiss on the proposal card in this chat — I cannot submit transactions from text alone.",
+      };
+    }
+  }
+
+  if (convo.pendingClarification === "rebalance_distribution") {
+    const parsedTargets = parseRebalanceTargets(text);
+    if (parsedTargets) {
+      clearConversationField(accountId, chatId, "pendingClarification");
+      try {
+        const blocks = await executePackageAction({
+          accountId,
+          namespacedName: PREPARE_REBALANCE_ACTION_NAME,
+          input: { distributionText: text },
+        });
+        setConversationContext(accountId, chatId, { recentUserIntent: "rebalance" });
+        if (shouldUseDeterministicAssistantReply(blocks)) {
+          return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+        }
+        return { mode: "llm", blocks, systemAddendum: "\n\n[A rebalance plan card is shown. Summarize briefly.]" };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Rebalance plan failed.";
+        return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+      }
+    }
+  }
+
+  if (isWalletAddressQuestion(lower)) {
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: GET_WALLET_ADDRESS_ACTION_NAME,
+        input: {},
+      });
+      setConversationContext(accountId, chatId, { recentUserIntent: "wallet_address" });
+      return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not read address.";
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+    }
   }
 
   if (isPortfolioOrBalanceQuestion(lower)) {
@@ -182,28 +265,47 @@ export async function planAssistantStructuredTurn(
       block.concentrationNote = concentrationNote;
     }
     const caption = buildPortfolioCardCaption(analysis, pricedCount, balances.length);
+    setConversationContext(accountId, chatId, { recentUserIntent: "portfolio" });
     return { mode: "deterministic", blocks: [block], caption };
   }
 
-  if (isYieldOptimizationQuestion(lower)) {
-    recordYieldOptimizationQuery(accountId);
-    let yieldCaptionExtra = "";
-    if (env === "mainnet") {
-      const pools = await assistantDataCache.getNaviPools(env);
-      const rec = buildYieldRecommendation(pools, riskProfile);
-      yieldCaptionExtra = buildYieldOpportunityCaption(rec, riskProfile, networkLabel);
+  const depThat = text.match(
+    /\b(?:deposit|put|supply)\s+([\d.,]+%?)\s+of\s+my\s+(\w+)\s+(?:into|to|in)\s+(?:that\s+pool|the\s+pool|it)\b/i,
+  );
+  if (depThat && convo.lastMentionedPool) {
+    const [, amt, spendTok] = depThat;
+    const pool = convo.lastMentionedPool;
+    const amountKind = /%/.test(amt) ? "percentage" : "absolute";
+    const amount = amt.replace(/\s+/g, "");
+    const spend = spendTok.toUpperCase();
+    const poolSym = pool.symbol.toUpperCase();
+    try {
+      const blocks =
+        spend === poolSym
+          ? await executePackageAction({
+              accountId,
+              namespacedName: PREPARE_YIELD_DEPOSIT_ACTION_NAME,
+              input: { asset: pool.symbol, amount, amountKind },
+            })
+          : await executePackageAction({
+              accountId,
+              namespacedName: SWAP_THEN_DEPOSIT_ACTION_NAME,
+              input: {
+                spendSymbol: spend,
+                poolAssetSymbol: pool.symbol,
+                amount,
+                amountKind,
+              },
+            });
+      setConversationContext(accountId, chatId, { recentUserIntent: "yield_deposit_followup" });
+      if (shouldUseDeterministicAssistantReply(blocks)) {
+        return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+      }
+      return { mode: "llm", blocks, systemAddendum: "\n\n[A yield proposal card is shown. One short sentence.]" };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not prepare deposit.";
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
     }
-    const tExec = performance.now();
-    const blocks = await executePackageAction({
-      accountId,
-      namespacedName: LIST_YIELD_POOLS_ACTION_NAME,
-      input: { sortBy: "apy", riskProfile },
-    });
-    console.info(`[assistant] fetch pools / package action ${(performance.now() - tExec).toFixed(0)}ms`);
-    const caption = yieldCaptionExtra
-      ? `${yieldCaptionExtra} See the pool card for the full live list.`
-      : captionForBlocks(blocks, { network: networkLabel, riskProfile });
-    return { mode: "deterministic", blocks, caption };
   }
 
   const routed = tryRouteAssistantToolCall(text);
@@ -237,6 +339,11 @@ export async function planAssistantStructuredTurn(
         } else if (t === "navi_deposit_proposal" || t === "navi_withdraw_proposal") {
           systemAddendum =
             "\n\n[A Navi transaction review card is shown. Add at most one short sentence: note protocol/yield risks and that funds move only after the user approves the card.]";
+        } else if (t === "composite_swap_then_deposit") {
+          systemAddendum =
+            "\n\n[A staged swap→deposit card is shown. Note only the swap is executable first; deposit is estimated after the swap.]";
+        } else if (t === "rebalance_proposal") {
+          systemAddendum = "\n\n[A rebalance plan card is shown. Summarize briefly; swaps are not executed automatically.]";
         }
       }
 
@@ -259,6 +366,98 @@ export async function planAssistantStructuredTurn(
         caption: msg,
       };
     }
+  }
+
+  if (isLooseRebalanceAsk(lower)) {
+    setConversationContext(accountId, chatId, {
+      pendingClarification: "rebalance_distribution",
+      recentUserIntent: "rebalance_clarify",
+    });
+    return {
+      mode: "deterministic",
+      blocks: [],
+      caption:
+        "What target mix do you want? Example: 30% SUI, 20% WAL, 20% DEEP, and the rest in USDC (percentages should add to 100%).",
+    };
+  }
+
+  const maybeTargets = parseRebalanceTargets(text);
+  if (maybeTargets && /\brebalance|target\s+allocation|portfolio\s+mix|adjust\s+my\s+allocation\b/i.test(lower)) {
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: PREPARE_REBALANCE_ACTION_NAME,
+        input: { distributionText: text },
+      });
+      clearConversationField(accountId, chatId, "pendingClarification");
+      setConversationContext(accountId, chatId, { recentUserIntent: "rebalance" });
+      if (shouldUseDeterministicAssistantReply(blocks)) {
+        return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+      }
+      return { mode: "llm", blocks, systemAddendum: "\n\n[A rebalance plan card is shown. Summarize briefly.]" };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Rebalance plan failed.";
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+    }
+  }
+
+  if (isPureBestApyQuestion(lower) && env === "mainnet") {
+    const poolRows = await assistantDataCache.getNaviPools(env);
+    const top = [...poolRows].sort((a, b) => b.supplyApy - a.supplyApy)[0];
+    if (top) {
+      setConversationContext(accountId, chatId, {
+        lastMentionedPool: {
+          symbol: top.symbol,
+          coinType: top.coinType,
+          supplyApy: top.supplyApy,
+          decimals: top.decimals,
+          assetId: top.assetId,
+          poolObjectId: top.poolObjectId,
+          reserveId: top.reserveId,
+          risk: top.risk,
+        },
+        lastYieldRecommendation: `${top.symbol} ${top.supplyApy.toFixed(2)}%`,
+        recentUserIntent: "best_apy",
+      });
+    }
+    const blocks = await executePackageAction({
+      accountId,
+      namespacedName: LIST_YIELD_POOLS_ACTION_NAME,
+      input: { sortBy: "apy", riskProfile, limit: 5 },
+    });
+    const caption =
+      "Top Navi pools by headline supply APY on the card. Higher APY can mean more token or protocol risk, and rates move.";
+    return { mode: "deterministic", blocks, caption };
+  }
+
+  if (isYieldOptimizationQuestion(lower)) {
+    recordYieldOptimizationQuery(accountId);
+    let yieldCaptionExtra = "";
+    if (env === "mainnet") {
+      const pools = await assistantDataCache.getNaviPools(env);
+      const rec = buildYieldRecommendation(pools, riskProfile);
+      yieldCaptionExtra = buildYieldOpportunityCaption(rec, riskProfile, networkLabel);
+    }
+    const tExec = performance.now();
+    const blocks = await executePackageAction({
+      accountId,
+      namespacedName: LIST_YIELD_POOLS_ACTION_NAME,
+      input: { sortBy: "apy", riskProfile },
+    });
+    console.info(`[assistant] fetch pools / package action ${(performance.now() - tExec).toFixed(0)}ms`);
+    const caption = yieldCaptionExtra
+      ? `${yieldCaptionExtra} See the pool card for the full live list.`
+      : captionForBlocks(blocks, { network: networkLabel, riskProfile });
+    return { mode: "deterministic", blocks, caption };
+  }
+
+  if (isActivityQuestion(lower)) {
+    const items = await assistantDataCache.getActivityPreview(accountId);
+    return {
+      mode: "deterministic",
+      blocks: [],
+      caption: formatActivityCaption(items, networkLabel),
+    };
   }
 
   return { mode: "llm", blocks: [], systemAddendum: "" };

@@ -65,6 +65,8 @@ export type AssistantChatTurn = {
 export type AssistantChatRequest = {
   messages: AssistantChatTurn[];
   accountId: string;
+  /** Active assistant thread — used for follow-up context (e.g. “that pool”). */
+  chatId?: string;
   language: string;
   personalityId: string;
   /** Optional summary of pending proposal cards in the active chat (non-secret). */

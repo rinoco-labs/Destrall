@@ -25,6 +25,11 @@ export function formatPendingProposalsForContext(
     }
     if (!isMetadataV1(parsed)) continue;
     for (const block of parsed.structured as AssistantStructuredResult[]) {
+      if (block.type === "composite_swap_then_deposit" && block.swapProposal.status === "pending") {
+        const t = block.swapProposal.card?.title?.trim() || "swap";
+        lines.push(`Pending staged swap→deposit — approve swap step 1 on the card: ${t}`);
+        continue;
+      }
       if (!isProposalStructuredResult(block)) continue;
       if (block.status !== "pending") continue;
       const title = block.card?.title?.trim() || block.type.replace(/_/g, " ");

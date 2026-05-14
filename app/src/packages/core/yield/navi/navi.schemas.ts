@@ -6,6 +6,8 @@ export const listYieldPoolsInputSchema = z.object({
   asset: z.string().max(32).optional(),
   sortBy: z.enum(["apy", "tvl", "risk"]).optional(),
   riskProfile: z.enum(["conservative", "balanced", "aggressive", "max_yield"]).optional(),
+  /** Cap rows returned to the assistant card (default: all filtered pools). */
+  limit: z.number().int().min(1).max(50).optional(),
 });
 
 export const getYieldPositionsInputSchema = z.object({

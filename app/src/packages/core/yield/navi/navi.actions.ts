@@ -81,6 +81,10 @@ export async function listYieldPoolsAction(
     pools = pools.filter((p) => p.symbol.toUpperCase().includes(assetFilter));
   }
   pools = sortPoolsForRiskProfile(pools, riskProfile, parsed.data.sortBy);
+  const limit = parsed.data.limit;
+  if (typeof limit === "number" && limit > 0) {
+    pools = pools.slice(0, limit);
+  }
 
   const preamble = recommendationPreamble(riskProfile);
 

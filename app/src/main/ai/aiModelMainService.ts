@@ -417,6 +417,7 @@ export class AiModelMainService {
   async chat(payload: {
     messages: ChatTurnMessage[];
     accountId: string;
+    chatId?: string;
     language: string;
     personalityId: string;
     pendingProposalsSummary?: string;
@@ -428,7 +429,10 @@ export class AiModelMainService {
 
     if (last?.role === "user") {
       const tPlan = performance.now();
-      const plan = await planAssistantStructuredTurn(payload.accountId, last.content);
+      const plan = await planAssistantStructuredTurn(payload.accountId, last.content, {
+        chatId: payload.chatId,
+        pendingProposalsSummary: payload.pendingProposalsSummary,
+      });
       console.info(
         `[assistant] local planner ${(performance.now() - tPlan).toFixed(0)}ms mode=${plan.mode}`,
       );
