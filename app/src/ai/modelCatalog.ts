@@ -50,7 +50,7 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     description: "Higher quality responses at a larger footprint.",
     filename: "gemma-4-e2b-it-q4_0.gguf",
     downloadUrl: "hf:unsloth/gemma-4-E2B-it-GGUF:Q4_0",
-    sizeBytes: 3_264_175_140,
+    sizeBytes: 3_041_376_384,
     quantization: "Q4_0",
     contextLength: 8192,
     recommendedDeviceNotes: "Prefer 24GB+ unified memory or discrete GPU with ample VRAM.",

@@ -1,17 +1,17 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, /* Link, */ useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Bell,
+  // Bell,
   ChevronRight,
-  DollarSign,
+  // DollarSign,
   Info,
   Brain,
   LogOut,
   ShieldCheck,
   Timer,
   Key,
-  Boxes,
+  // Boxes,
   Palette,
   Languages,
   Sparkles,
@@ -26,11 +26,11 @@ import { AiModelModal } from "@/components/settings/AiModelModal";
 import {
   useSettingsStore,
   SUPPORTED_LANGUAGES,
-  SUPPORTED_CURRENCIES,
+  // SUPPORTED_CURRENCIES,
   AUTO_LOCK_OPTIONS,
   AI_PERSONALITIES,
   type AppLanguage,
-  type AppCurrency,
+  // type AppCurrency,
   type AiPersonality,
 } from "@/stores/settingsStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
@@ -92,7 +92,7 @@ function SettingRow({ icon: Icon, label, value, destructive, highlight, onClick 
   );
 }
 
-type ModalKind = null | "language" | "currency" | "autoLock" | "aiModel" | "personality" | "network";
+type ModalKind = null | "language" | /* "currency" | */ "autoLock" | "aiModel" | "personality" | "network";
 
 function SettingsPage() {
   const { t } = useTranslation();
@@ -107,8 +107,8 @@ function SettingsPage() {
 
   const language = useSettingsStore((s) => s.language);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
-  const currency = useSettingsStore((s) => s.currency);
-  const setCurrency = useSettingsStore((s) => s.setCurrency);
+  // const currency = useSettingsStore((s) => s.currency);
+  // const setCurrency = useSettingsStore((s) => s.setCurrency);
   const autoLockMinutes = useSettingsStore((s) => s.autoLockMinutes);
   const setAutoLockMinutes = useSettingsStore((s) => s.setAutoLockMinutes);
   const refreshAiModels = useAiModelStore((s) => s.refreshFromMain);
@@ -133,7 +133,7 @@ function SettingsPage() {
   const setAiPersonality = useSettingsStore((s) => s.setAiPersonality);
 
   const langLabel = SUPPORTED_LANGUAGES.find((l) => l.code === language)?.native ?? language;
-  const currencyLabel = currency;
+  // const currencyLabel = currency;
   const autoLockLabel =
     AUTO_LOCK_OPTIONS.find((a) => a.value === autoLockMinutes)?.label ?? `${autoLockMinutes} min`;
   const selectedMeta = availableModels.find((m) => m.id === (activeModelId ?? selectedModelId));
@@ -207,7 +207,7 @@ function SettingsPage() {
           {t("settings.general")}
         </p>
         <div className="rounded-2xl border border-border bg-card/40 backdrop-blur divide-y divide-border overflow-hidden mb-8">
-          <Link
+          {/* <Link
             to="/store"
             search={{ tab: "installed" }}
             className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/40 transition"
@@ -218,29 +218,29 @@ function SettingsPage() {
             </span>
             <span className="text-sm text-muted-foreground">{t("settings.manage")}</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
-          </Link>
+          </Link> */}
           <SettingRow
             icon={Globe}
             label="Sui network"
             value={networkLabel}
             onClick={() => setOpenModal("network")}
           />
-          <SettingRow
+          {/* <SettingRow
             icon={DollarSign}
             label={t("settings.currency")}
             value={currencyLabel}
             onClick={() => setOpenModal("currency")}
-          />
-          <SettingRow
+          /> */}
+          {/* <SettingRow
             icon={Bell}
             label={t("settings.notifications")}
             value={t("settings.on")}
-          />
-          <SettingRow
+          /> */}
+          {/* <SettingRow
             icon={ShieldCheck}
             label={t("settings.developerMode")}
             value={t("settings.on")}
-          />
+          /> */}
           <SettingRow icon={Info} label={t("settings.version")} value="1.0.0" />
         </div>
 
@@ -355,7 +355,7 @@ function SettingsPage() {
         onSelect={setLanguage}
       />
 
-      <SelectModal<AppCurrency>
+      {/* <SelectModal<AppCurrency>
         open={openModal === "currency"}
         onOpenChange={(o) => !o && setOpenModal(null)}
         title={t("settings.currency")}
@@ -367,7 +367,7 @@ function SettingsPage() {
           description: `Symbol: ${c.symbol}`,
         }))}
         onSelect={setCurrency}
-      />
+      /> */}
 
       <AutoLockModal
         open={openModal === "autoLock"}

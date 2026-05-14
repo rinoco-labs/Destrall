@@ -3,9 +3,9 @@ import { Link } from "@tanstack/react-router";
 import {
   Home,
   MessageSquareText,
-  Store,
+  // Store,
   Settings as SettingsIcon,
-  Code2,
+  // Code2,
   Moon,
   Sun,
   PanelLeftClose,
@@ -30,12 +30,12 @@ type NavItem = {
 const TOP_NAV: NavItem[] = [
   { key: "home", i18nKey: "nav.home", to: "/home", icon: Home },
   { key: "assistant", i18nKey: "nav.assistant", to: "/assistant", icon: MessageSquareText },
-  { key: "store", i18nKey: "nav.store", to: "/store", icon: Store },
+  // { key: "store", i18nKey: "nav.store", to: "/store", icon: Store },
 ];
 
 const SIDE_NAV: NavItem[] = [
   { key: "settings", i18nKey: "nav.settings", to: "/settings", icon: SettingsIcon },
-  { key: "developer", i18nKey: "nav.developer", to: "/developer", icon: Code2 },
+  // { key: "developer", i18nKey: "nav.developer", to: "/developer", icon: Code2 },
 ];
 
 export function AppShell({
