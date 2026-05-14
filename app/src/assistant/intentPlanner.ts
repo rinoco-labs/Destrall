@@ -11,7 +11,8 @@ import {
   buildYieldOpportunityCaption,
   buildYieldRecommendation,
 } from "./yield-recommendation.service";
-import { readStoredYieldRiskProfile, isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.service";
+import { readStoredYieldRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
+import { isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.heuristics";
 import { shouldUseDeterministicAssistantReply } from "./actionResolver";
 import {
   GET_WALLET_ADDRESS_ACTION_NAME,

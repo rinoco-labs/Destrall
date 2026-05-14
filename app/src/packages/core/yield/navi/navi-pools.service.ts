@@ -4,7 +4,7 @@ import { getSuiClientForEnvironment } from "../../../../main/services/chains/sui
 import { NAVI_POOL_CONFIGS, NAVI_RESERVE_PARENT_ID } from "./navi-onchain-pool-config";
 import { fetchNaviConfig, NAVI_POOLS_API, safeFetchJson } from "./navi-config.service";
 import type { NaviPoolRow } from "./navi.types";
-import { riskLabelForSymbol } from "./navi-risk.service";
+import { riskLabelForSymbol } from "./navi-risk.heuristics";
 
 let cachedPools: NaviPoolRow[] | null = null;
 let lastPoolFetchTime = 0;

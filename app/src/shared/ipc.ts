@@ -11,9 +11,18 @@ import type {
 import type { SuiChainEnvironment } from "../config/chains/sui";
 import type { SupportedChainDescriptor } from "../config/networks";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
-import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import type { NaviPoolRow, NaviPositionView, NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import type { YieldRiskProfile } from "@packages/core/yield/navi/navi-risk.heuristics";
+import type { DailyBriefAssistantMemoryPayload } from "./dailyBriefMemory";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/** Navi pools, positions, and stored yield risk for on-device Daily Brief (main-backed reads). */
+export type DailyBriefChainBundle = {
+  pools: NaviPoolRow[];
+  positions: NaviPositionView[];
+  riskProfile: YieldRiskProfile;
+};
 
 export type WalletCreateRequest = {
   mnemonic: string;
@@ -141,6 +150,11 @@ export type DestrallApi = {
       accountId: string;
       proposalSnapshot: NaviYieldProposalSnapshotV1;
     }) => Promise<RpcResult<SwapExecuteResult>>;
+    getDailyBriefChainBundle: (accountId: string) => Promise<RpcResult<DailyBriefChainBundle>>;
+    publishDailyBriefMemory: (payload: {
+      accountId: string;
+      memory: DailyBriefAssistantMemoryPayload;
+    }) => Promise<RpcResult<{ ok: true }>>;
     onNetworkChanged: (listener: () => void) => () => void;
   };
   contacts: {
@@ -223,6 +237,8 @@ export const IPCChannels = {
   chainConfirmTransfer: "chain:confirm-transfer",
   chainExecuteSwap: "chain:execute-swap",
   chainExecuteNaviYield: "chain:execute-navi-yield",
+  chainGetDailyBriefBundle: "chain:get-daily-brief-bundle",
+  chainPublishDailyBriefMemory: "chain:publish-daily-brief-memory",
   chainNetworkChanged: "chain:network-changed",
   contactsList: "contacts:list",
   contactsCreate: "contacts:create",

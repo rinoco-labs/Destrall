@@ -1,6 +1,6 @@
 import type { NaviPoolRow } from "../packages/core/yield/navi/navi.types";
-import type { YieldRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
-import { isLikelyStablecoin, sortPoolsForRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
+import type { YieldRiskProfile } from "../packages/core/yield/navi/navi-risk.heuristics";
+import { isLikelyStablecoin, sortPoolsForRiskProfile } from "../packages/core/yield/navi/navi-risk.heuristics";
 
 export type YieldRecommendation = {
   bestPools: NaviPoolRow[];

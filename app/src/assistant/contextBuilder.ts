@@ -3,11 +3,13 @@ import { actionRegistry } from "../packages/runtime/actionRegistry";
 import { contactRepository } from "../main/persistence/repositories/contactRepository";
 import { assistantToolDefinitionsForModel } from "./assistantFunctionSchemas";
 import { networkSettingsService } from "../main/services/network/networkSettingsService";
-import { readStoredYieldRiskProfile, isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.service";
+import { readStoredYieldRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
+import { isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.heuristics";
 import { assistantDataCache } from "./cache/assistantDataCache";
 import { analyzePortfolio } from "./portfolio-analysis.service";
 import { buildPortfolioRecommendationDigest } from "./recommendationEngine";
 import { behaviorMemoryLines } from "./behaviorMemoryStore";
+import { dailyBriefAssistantMemoryLines } from "../main/services/dailyBriefMemoryService";
 
 function contactInScope(accountId: string, row: { accountId: string | null; chain: string }): boolean {
   if (row.chain !== "sui") return false;
@@ -83,6 +85,9 @@ export async function buildCompactAssistantContext(
     }
 
     for (const m of behaviorMemoryLines(accountId)) {
+      lines.push(m);
+    }
+    for (const m of dailyBriefAssistantMemoryLines(accountId)) {
       lines.push(m);
     }
   }

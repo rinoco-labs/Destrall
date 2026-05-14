@@ -6,18 +6,23 @@ import {
   Sparkles,
   TrendingUp,
   TrendingDown,
-  ShieldCheck,
   Wallet,
   Lightbulb,
   Activity as ActivityIcon,
   RefreshCw,
+  ChevronDown,
+  Sprout,
+  ShieldAlert,
+  BarChart3,
+  Target,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
-import { desktopGetChainBalances, desktopGetChainActivity } from "@/lib/desktopChain";
-import type { ChainActivityItem, TokenBalanceView } from "../../types/blockchain";
 import { chainQueryScope } from "@/components/network-wallet-query-sync";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { loadDailyBrief } from "../../services/daily-brief/daily-brief.service";
+import type { SuiChainEnvironment } from "../../config/chains/sui";
 
 export const Route = createFileRoute("/daily-brief")({
   component: DailyBriefPage,
@@ -26,20 +31,10 @@ export const Route = createFileRoute("/daily-brief")({
       { title: "Daily Brief — Destrall" },
       {
         name: "description",
-        content:
-          "Full daily portfolio brief: snapshot, movers, risk, and AI-suggested actions.",
+        content: "Portfolio, yield, risk, and activity intelligence built from your wallet context.",
       },
     ],
   }),
-});
-
-const MS_24H = 24 * 60 * 60 * 1000;
-
-const usdTotalFmt = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-  minimumFractionDigits: 2,
 });
 
 const spotUsdFmt = new Intl.NumberFormat("en-US", {
@@ -49,39 +44,20 @@ const spotUsdFmt = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 6,
 });
 
-function sumUsdValues(rows: Pick<TokenBalanceView, "usdValue">[]): number | null {
-  let sum = 0;
-  let n = 0;
-  for (const b of rows) {
-    if (!b.usdValue) continue;
-    const v = Number.parseFloat(b.usdValue.replace(/[^0-9.-]/g, ""));
-    if (Number.isFinite(v)) {
-      sum += v;
-      n += 1;
-    }
-  }
-  return n > 0 ? sum : null;
-}
-
-function activityInLast24h(items: ChainActivityItem[]): ChainActivityItem[] {
-  const cutoff = Date.now() - MS_24H;
-  return items.filter((i) => i.timestamp != null && i.timestamp >= cutoff);
-}
-
-function countPositiveBalanceTokens(rows: TokenBalanceView[]): number {
-  let c = 0;
-  for (const b of rows) {
-    try {
-      if (BigInt(b.balanceRaw) > 0n) c += 1;
-    } catch {
-      /* ignore */
-    }
-  }
-  return c;
-}
-
 function DailyBriefPage() {
-  const [generatedAt, setGeneratedAt] = useState(() => new Date());
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    overview: true,
+    portfolio: true,
+    yield: true,
+    risk: true,
+    market: false,
+    activity: false,
+    recs: true,
+    opps: true,
+  });
+
+  const setSection = (key: string, value: boolean) => setOpenSections((s) => ({ ...s, [key]: value }));
+
   const walletSnap = useWalletStore();
   const activeAccount = useMemo(() => getActiveWalletAccount(walletSnap), [walletSnap]);
   const network = useNetworkStore((s) => s.network);
@@ -89,144 +65,40 @@ function DailyBriefPage() {
   const briefQuery = useQuery({
     queryKey: [
       ...chainQueryScope,
-      "daily-brief",
+      "daily-brief-v2",
       activeAccount?.id ?? "",
       network?.activeEnvironment ?? "",
     ],
     queryFn: async () => {
-      if (!activeAccount) {
-        return { balances: [] as TokenBalanceView[], activityItems: [] as ChainActivityItem[] };
+      if (!activeAccount || !network) {
+        throw new Error("Missing account or network");
       }
-      const [balances, activity] = await Promise.all([
-        desktopGetChainBalances(activeAccount.id),
-        desktopGetChainActivity({ accountId: activeAccount.id }),
-      ]);
-      return { balances, activityItems: activity.items };
+      return loadDailyBrief({
+        accountId: activeAccount.id,
+        accountName: activeAccount.name,
+        isSuiAccount: activeAccount.chain === "sui",
+        suiEnvironment: network.activeEnvironment as SuiChainEnvironment,
+        networkLabel: `${network.activeChain} · ${network.activeEnvironment}`,
+      });
     },
     enabled: Boolean(activeAccount?.id && network),
+    staleTime: 15 * 60 * 1000,
   });
 
-  const rows = briefQuery.data?.balances ?? [];
-  const totalUsd = useMemo(() => sumUsdValues(rows), [rows]);
-  const pricedCount = useMemo(() => rows.filter((b) => b.usdValue).length, [rows]);
-  const positiveTokens = useMemo(() => countPositiveBalanceTokens(rows), [rows]);
-
-  const activity24h = useMemo(
-    () => activityInLast24h(briefQuery.data?.activityItems ?? []),
-    [briefQuery.data?.activityItems],
-  );
-
-  const activityStats = useMemo(() => {
-    const txs = activity24h.length;
-    let receives = 0;
-    let sends = 0;
-    for (const a of activity24h) {
-      if (a.type === "receive") receives += 1;
-      else if (a.type === "send") sends += 1;
-    }
-    return { txs, receives, sends };
-  }, [activity24h]);
-
-  const movers = useMemo(() => {
-    const priced = rows.filter((b) => b.usdPricePerUnit != null && Number.isFinite(b.usdPricePerUnit));
-    return [...priced].sort((a, b) => {
-      const da = Math.abs(a.usdPriceChange24hPct ?? 0);
-      const db = Math.abs(b.usdPriceChange24hPct ?? 0);
-      return db - da;
-    });
-  }, [rows]);
-
-  const refresh = async () => {
-    setGeneratedAt(new Date());
-    await briefQuery.refetch();
-  };
-
-  const generatedLabel = generatedAt.toLocaleString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-  const isSuiAccount = activeAccount?.chain === "sui";
-  const devnetNoPrices = network?.activeEnvironment === "devnet";
-
-  const heroParagraph = (() => {
-    if (!activeAccount) {
-      return "Unlock your wallet and pick an account to see a live portfolio summary.";
-    }
-    if (!isSuiAccount) {
-      return "Daily Brief pricing and balances use your Sui account. Switch to a Sui account on Home for on-chain totals.";
-    }
-    if (!network) {
-      return "Loading network settings…";
-    }
-    if (briefQuery.isLoading) {
-      return "Loading your on-chain balances and recent activity…";
-    }
-    if (briefQuery.isError) {
-      return (briefQuery.error as Error)?.message ?? "Could not load wallet data. Check the network and try refresh.";
-    }
-    const total =
-      totalUsd != null ? usdTotalFmt.format(totalUsd) : devnetNoPrices ? "— (devnet)" : "—";
-    const netLabel = network
-      ? `${network.activeChain} · ${network.activeEnvironment}`
-      : "current network";
-    const pricedLine =
-      rows.length === 0
-        ? "No token balances detected on this address yet."
-        : totalUsd != null
-          ? `${pricedCount === rows.length ? "All" : `${pricedCount} of ${rows.length}`} held assets have a USD quote from Aftermath.`
-          : devnetNoPrices
-            ? "USD quotes from Aftermath are unavailable on Sui Devnet."
-            : "None of the detected tokens returned a USD quote from Aftermath.";
-    const act =
-      activityStats.txs === 0
-        ? "No transactions in the latest history within the last 24 hours (first page of activity)."
-        : `${activityStats.txs} transaction(s) with timestamps in the last 24 hours in your recent activity feed.`;
-    return (
-      <>
-        Portfolio total about <span className="text-foreground font-medium">{total}</span> on{" "}
-        <span className="text-foreground font-medium">{netLabel}</span> for{" "}
-        <span className="text-foreground font-medium">{activeAccount.name}</span>. {pricedLine} {act}
-      </>
-    );
-  })();
-
-  const suggestions = useMemo(() => {
-    const out: string[] = [];
-    if (!activeAccount) {
-      out.push("Unlock Destrall and select an account to personalize this brief.");
-      return out;
-    }
-    if (!isSuiAccount) {
-      out.push("Create or switch to a Sui account to track balances and Aftermath prices here.");
-      return out;
-    }
-    if (rows.length === 0) {
-      out.push("Receive SUI or other Sui tokens to this address to start building a portfolio view.");
-    }
-    if (rows.length > 0 && pricedCount < rows.length && !devnetNoPrices) {
-      out.push("Some held tokens have no Aftermath USD quote — amounts still show on Home.");
-    }
-    if (activityStats.txs === 0 && rows.length > 0) {
-      out.push("No recent 24h activity in the first history page — open Activity for the full feed.");
-    }
-    out.push("Ask the assistant about Navi yield on Sui when you want to put idle assets to work.");
-    return out;
-  }, [
-    activeAccount,
-    isSuiAccount,
-    rows.length,
-    pricedCount,
-    devnetNoPrices,
-    activityStats.txs,
-  ]);
+  const brief = briefQuery.data;
+  const generatedLabel = brief
+    ? new Date(brief.generatedAt).toLocaleString(undefined, {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "—";
 
   return (
     <AppShell active="home">
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="max-w-3xl mx-auto w-full pb-10">
         <div className="flex items-center gap-3 mb-6">
           <Link
             to="/home"
@@ -235,254 +107,305 @@ function DailyBriefPage() {
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">Daily Brief</h1>
-            <p className="text-xs text-muted-foreground">Generated {generatedLabel}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {brief ? `For ${brief.accountName} · ${generatedLabel}` : `Generated ${generatedLabel}`}
+            </p>
           </div>
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void briefQuery.refetch()}
             disabled={briefQuery.isFetching}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/40 hover:bg-secondary/70 px-4 py-2 text-sm font-medium transition disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/40 hover:bg-secondary/70 px-4 py-2 text-sm font-medium transition disabled:opacity-60 shrink-0"
           >
             <RefreshCw className={`w-4 h-4 ${briefQuery.isFetching ? "animate-spin" : ""}`} />
             {briefQuery.isFetching ? "Refreshing" : "Refresh"}
           </button>
         </div>
 
-        {/* Hero summary */}
-        <div className="rounded-2xl border border-border bg-card/50 p-6 mb-5 flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-brand/15 text-brand flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5" />
+        {briefQuery.isLoading && (
+          <p className="text-sm text-muted-foreground mb-6">Building your brief from balances, Navi, and activity…</p>
+        )}
+        {briefQuery.isError && (
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm mb-6">
+            {(briefQuery.error as Error)?.message ?? "Could not load Daily Brief."}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold">
-              {activeAccount ? `${activeAccount.name} — Portfolio summary` : "Portfolio summary"}
-            </p>
-            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{heroParagraph}</p>
-          </div>
-        </div>
+        )}
 
-        {/* Sections grid */}
-        <div className="grid sm:grid-cols-2 gap-4 mb-5">
-          <Section
-            icon={Wallet}
-            title="Snapshot"
-            items={[
-              {
-                label: "Total balance",
-                value:
-                  briefQuery.isLoading && isSuiAccount
-                    ? "…"
-                    : totalUsd != null
-                      ? usdTotalFmt.format(totalUsd)
-                      : "—",
-              },
-              {
-                label: "Account",
-                value: activeAccount ? activeAccount.name : "—",
-              },
-              {
-                label: "Network",
-                value: network
-                  ? `${network.activeChain} · ${network.activeEnvironment}`
-                  : "—",
-              },
-              {
-                label: "Tokens (non-zero)",
-                value: briefQuery.isLoading && isSuiAccount ? "…" : String(positiveTokens),
-              },
-            ]}
-          />
-          <Section
-            icon={ActivityIcon}
-            title="24h activity"
-            subtitle="From the first page of your activity feed"
-            items={[
-              {
-                label: "Transactions (24h)",
-                value:
-                  briefQuery.isLoading && isSuiAccount
-                    ? "…"
-                    : String(activityStats.txs),
-              },
-              {
-                label: "Receive events",
-                value:
-                  briefQuery.isLoading && isSuiAccount
-                    ? "…"
-                    : String(activityStats.receives),
-              },
-              {
-                label: "Send events",
-                value:
-                  briefQuery.isLoading && isSuiAccount
-                    ? "…"
-                    : String(activityStats.sends),
-              },
-              { label: "Fees paid (est.)", value: "—" },
-            ]}
-          />
-        </div>
-
-        {/* Movers */}
-        <div className="rounded-2xl border border-border bg-card/40 p-5 mb-5">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-            Top movers (your holdings)
-          </p>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Spot price and 24h % from Aftermath{" "}
-            <a
-              href="https://docs.aftermath.finance/for-developers/typescript-sdk/products/prices"
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand hover:underline"
+        {brief && (
+          <>
+            <SectionCard
+              title="Overview"
+              icon={Sparkles}
+              open={openSections.overview}
+              onOpenChange={(v) => setSection("overview", v)}
             >
-              Prices API
-            </a>
-            . 24h % may show as 0 when Aftermath does not expose that series yet.
-          </p>
-          <div className="space-y-2">
-            {briefQuery.isLoading && isSuiAccount ? (
-              <p className="text-sm text-muted-foreground py-2">Loading quotes…</p>
-            ) : !isSuiAccount ? (
-              <p className="text-sm text-muted-foreground py-2">
-                Switch to a Sui account to see Aftermath prices for your tokens.
-              </p>
-            ) : movers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">
-                {rows.length === 0
-                  ? "No balances to rank yet."
-                  : "No Aftermath USD quotes for the tokens you hold on this network."}
-              </p>
-            ) : (
-              movers.slice(0, 6).map((b) => (
-                <Mover
-                  key={b.coinType}
-                  symbol={b.symbol}
-                  name={b.symbol}
-                  change={b.usdPriceChange24hPct ?? 0}
-                  price={spotUsdFmt.format(b.usdPricePerUnit ?? 0)}
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {brief.homeSummaryLines.map((line) => (
+                  <li key={line} className="leading-relaxed">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
+
+            <SectionCard
+              title="Portfolio insights"
+              icon={Wallet}
+              open={openSections.portfolio}
+              onOpenChange={(v) => setSection("portfolio", v)}
+            >
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                <Stat label="Total (priced subset)" value={brief.portfolioSummary.totalValueLabel} />
+                <Stat
+                  label="Diversification score"
+                  value={`${brief.portfolioSummary.diversificationScore}/100 (heuristic)`}
                 />
-              ))
-            )}
-          </div>
-        </div>
+                <Stat
+                  label="Largest position"
+                  value={
+                    brief.portfolioSummary.biggestPositionSymbol && brief.portfolioSummary.biggestPositionPct != null
+                      ? `${brief.portfolioSummary.biggestPositionSymbol} ~${brief.portfolioSummary.biggestPositionPct.toFixed(0)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Stable allocation"
+                  value={
+                    brief.portfolioSummary.stableAllocationPct != null
+                      ? `~${brief.portfolioSummary.stableAllocationPct.toFixed(0)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Best 24h (priced)"
+                  value={
+                    brief.portfolioSummary.bestPerformerSymbol && brief.portfolioSummary.bestPerformerPct != null
+                      ? `${brief.portfolioSummary.bestPerformerSymbol} ${brief.portfolioSummary.bestPerformerPct >= 0 ? "+" : ""}${brief.portfolioSummary.bestPerformerPct.toFixed(1)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Weakest 24h (priced)"
+                  value={
+                    brief.portfolioSummary.worstPerformerSymbol && brief.portfolioSummary.worstPerformerPct != null
+                      ? `${brief.portfolioSummary.worstPerformerSymbol} ${brief.portfolioSummary.worstPerformerPct.toFixed(1)}%`
+                      : "—"
+                  }
+                />
+              </div>
+              {brief.portfolioSummary.idleBalances.length > 0 ? (
+                <div className="mt-4 rounded-xl border border-border/80 bg-background/40 p-3">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Idle / not in Navi</p>
+                  <ul className="text-sm space-y-1">
+                    {brief.portfolioSummary.idleBalances.map((r) => (
+                      <li key={r.symbol} className="flex justify-between gap-2">
+                        <span>
+                          {r.symbol} {r.balanceFormatted}
+                        </span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {r.approxUsd != null ? spotUsdFmt.format(r.approxUsd) : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </SectionCard>
 
-        {/* Risk */}
-        <div className="rounded-2xl border border-border bg-card/40 p-5 mb-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="font-semibold">Security &amp; risk</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              This brief uses read-only chain data in Destrall. Keep your recovery phrase offline; never
-              paste it into chat or unknown sites. Prefer hardware or OS-backed protection for high-value
-              keys.
-            </p>
-          </div>
-        </div>
+            <SectionCard
+              title="Yield insights"
+              icon={Sprout}
+              open={openSections.yield}
+              onOpenChange={(v) => setSection("yield", v)}
+            >
+              {brief.yieldSummary.activePositions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No Navi supply positions in the configured pool set.</p>
+              ) : (
+                <div className="space-y-2">
+                  {brief.yieldSummary.activePositions.map((p) => (
+                    <div
+                      key={p.symbol}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-background/40 px-3 py-2.5 text-sm"
+                    >
+                      <span className="font-medium">{p.symbol}</span>
+                      <span className="text-muted-foreground">
+                        Supplied {p.suppliedFormatted} · ~{p.apyPct.toFixed(2)}% APY
+                      </span>
+                      <span className="text-xs text-muted-foreground w-full sm:w-auto">
+                        Est. annual (if USD inferred):{" "}
+                        {p.approxUsdAnnualUsd != null ? spotUsdFmt.format(p.approxUsdAnnualUsd) : "—"}
+                      </span>
+                    </div>
+                  ))}
+                  {brief.yieldSummary.estimatedAnnualYieldUsd != null ? (
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Combined rough annualized estimate from positions with a USD mark:{" "}
+                      {spotUsdFmt.format(brief.yieldSummary.estimatedAnnualYieldUsd)} — illustrative only.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              {brief.yieldSummary.availableOpportunities.length > 0 ? (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Top pools (context)</p>
+                  <div className="space-y-2">
+                    {brief.yieldSummary.availableOpportunities.slice(0, 6).map((p) => (
+                      <div
+                        key={p.symbol}
+                        className="rounded-xl border border-border/60 px-3 py-2 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
+                      >
+                        <span className="font-medium">
+                          {p.symbol} · {p.supplyApyPct.toFixed(2)}% supply
+                        </span>
+                        <span className="text-xs text-muted-foreground">{p.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </SectionCard>
 
-        {/* Suggestions */}
-        <div className="rounded-2xl border border-border bg-card/40 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="w-4 h-4 text-brand" />
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              Suggested actions
-            </p>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {suggestions.map((text) => (
-              <Suggestion key={text} text={text} />
-            ))}
-          </ul>
-        </div>
+            <SectionCard
+              title="Risk alerts"
+              icon={ShieldAlert}
+              open={openSections.risk}
+              onOpenChange={(v) => setSection("risk", v)}
+            >
+              {brief.riskAlerts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No extra heuristic flags beyond your usual profile.</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {brief.riskAlerts.map((t) => (
+                    <li key={t} className="flex gap-2">
+                      <span className="text-brand mt-1">•</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Market context (your holdings only)"
+              icon={BarChart3}
+              open={openSections.market}
+              onOpenChange={(v) => setSection("market", v)}
+            >
+              <p className="text-sm text-muted-foreground mb-3">{brief.marketSummary.marketSentiment}</p>
+              {brief.marketSummary.heldMovers.length > 0 ? (
+                <div className="space-y-2">
+                  {brief.marketSummary.heldMovers.map((m) => {
+                    const up = m.change24hPct > 0;
+                    const flat = m.change24hPct === 0;
+                    const Trend = up ? TrendingUp : TrendingDown;
+                    const color = flat ? "text-muted-foreground" : up ? "text-emerald-400" : "text-rose-400";
+                    return (
+                      <div key={m.symbol} className="flex items-center justify-between rounded-xl bg-background/40 px-3 py-2">
+                        <span className="text-sm font-medium">{m.symbol}</span>
+                        <span className={`text-xs inline-flex items-center gap-1 ${color}`}>
+                          {!flat && <Trend className="w-3 h-3" />}
+                          {flat ? "0.0%" : `${up ? "+" : ""}${m.change24hPct.toFixed(1)}%`} <span className="text-muted-foreground">24h</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No per-token 24h marks on the priced subset.</p>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Recent activity"
+              icon={ActivityIcon}
+              open={openSections.activity}
+              onOpenChange={(v) => setSection("activity", v)}
+            >
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {brief.activitySummary.map((a) => (
+                  <li key={a.summary}>{a.summary}</li>
+                ))}
+              </ul>
+            </SectionCard>
+
+            <SectionCard
+              title="Recommendations"
+              icon={Lightbulb}
+              open={openSections.recs}
+              onOpenChange={(v) => setSection("recs", v)}
+            >
+              <ul className="space-y-2 text-sm">
+                {brief.recommendations.map((t) => (
+                  <li key={t} className="flex gap-2 text-muted-foreground">
+                    <span className="text-brand mt-1">•</span>
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
+
+            <SectionCard
+              title="Opportunities"
+              icon={Target}
+              open={openSections.opps}
+              onOpenChange={(v) => setSection("opps", v)}
+            >
+              {brief.opportunities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No extra prompts — your snapshot looks quiet.</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {brief.opportunities.map((t) => (
+                    <li key={t} className="flex gap-2">
+                      <span className="text-brand mt-1">•</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          </>
+        )}
       </div>
     </AppShell>
   );
 }
 
-function Section({
-  icon: Icon,
+function SectionCard({
   title,
-  subtitle,
-  items,
+  icon: Icon,
+  open,
+  onOpenChange,
+  children,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
   title: string;
-  subtitle?: string;
-  items: { label: string; value: string }[];
+  icon: React.ComponentType<{ className?: string }>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card/40 p-5">
-      <div className="mb-3">
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-brand" />
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">{title}</p>
-        </div>
-        {subtitle ? (
-          <p className="text-[11px] text-muted-foreground mt-1">{subtitle}</p>
-        ) : null}
-      </div>
-      <div className="divide-y divide-border">
-        {items.map((it) => (
-          <div key={it.label} className="flex items-center justify-between py-2 text-sm">
-            <span className="text-muted-foreground">{it.label}</span>
-            <span className="font-medium text-right pl-2">{it.value}</span>
+    <Collapsible open={open} onOpenChange={onOpenChange} className="mb-4">
+      <div className="rounded-2xl border border-border bg-card/40 overflow-hidden">
+        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-secondary/30 transition">
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon className="w-4 h-4 text-brand shrink-0" />
+            <span className="font-semibold truncate">{title}</span>
           </div>
-        ))}
+          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="px-4 pb-4 pt-0 border-t border-border/60">{children}</CollapsibleContent>
       </div>
-    </div>
+    </Collapsible>
   );
 }
 
-function Mover({
-  symbol,
-  name,
-  change,
-  price,
-}: {
-  symbol: string;
-  name: string;
-  change: number;
-  price: string;
-}) {
-  const up = change > 0;
-  const flat = change === 0;
-  const Trend = up ? TrendingUp : TrendingDown;
-  const color = flat
-    ? "text-muted-foreground"
-    : up
-      ? "text-emerald-400"
-      : "text-rose-400";
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-xl bg-background/40 px-3 py-2.5">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold shrink-0">
-          {symbol.charAt(0)}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight truncate">{symbol}</p>
-          <p className="text-xs text-muted-foreground leading-tight truncate">{name}</p>
-        </div>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="text-sm font-medium tabular-nums">{price}</p>
-        <p className={`text-xs inline-flex items-center gap-1 justify-end ${color}`}>
-          {!flat && <Trend className="w-3 h-3" />}
-          {flat ? "0.0%" : `${up ? "+" : ""}${change.toFixed(1)}%`}
-        </p>
-      </div>
+    <div className="rounded-xl bg-background/40 px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="font-medium mt-0.5">{value}</p>
     </div>
-  );
-}
-
-function Suggestion({ text }: { text: string }) {
-  return (
-    <li className="flex items-start gap-2">
-      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
-      <span className="text-muted-foreground">{text}</span>
-    </li>
   );
 }

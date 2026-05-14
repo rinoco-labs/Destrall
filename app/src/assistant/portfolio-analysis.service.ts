@@ -1,6 +1,6 @@
 import type { SuiChainEnvironment } from "../config/chains/sui";
 import type { TokenBalanceView } from "../types/blockchain";
-import type { YieldRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
+import type { YieldRiskProfile } from "../packages/core/yield/navi/navi-risk.heuristics";
 import {
   buildPortfolioRecommendationDigest,
   type NaviPositionSnapshot,

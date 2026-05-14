@@ -47,6 +47,19 @@ export const chainAccountIdSchema = z.object({
   accountId: z.string().min(1).max(128),
 });
 
+export const chainPublishDailyBriefMemorySchema = z.object({
+  accountId: z.string().min(1).max(128),
+  memory: z.object({
+    generatedAt: z.number(),
+    accountSummary: z.string().max(2000),
+    portfolioLine: z.string().max(2000),
+    yieldLine: z.string().max(2000),
+    riskLine: z.string().max(2000),
+    opportunityLine: z.string().max(2000),
+    recommendations: z.array(z.string().max(600)).max(16),
+  }),
+});
+
 export const chainActivitySchema = z.object({
   accountId: z.string().min(1).max(128),
   cursor: z.string().max(256).nullable().optional(),

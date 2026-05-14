@@ -6,6 +6,7 @@ import {
   type ModelProgressEvent,
   type WalletCreateRequest,
 } from "./shared/ipc";
+import type { DailyBriefAssistantMemoryPayload } from "./shared/dailyBriefMemory";
 import type { ChainId } from "./shared/wallet/types";
 import type { SuiChainEnvironment } from "./config/chains/sui";
 
@@ -48,6 +49,10 @@ const api: DestrallApi = {
       ipcRenderer.invoke(IPCChannels.chainConfirmTransfer, payload),
     executeSwap: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteSwap, payload),
     executeNaviYield: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteNaviYield, payload),
+    getDailyBriefChainBundle: (accountId: string) =>
+      ipcRenderer.invoke(IPCChannels.chainGetDailyBriefBundle, accountId),
+    publishDailyBriefMemory: (payload: { accountId: string; memory: DailyBriefAssistantMemoryPayload }) =>
+      ipcRenderer.invoke(IPCChannels.chainPublishDailyBriefMemory, payload),
     onNetworkChanged: (listener: () => void) => {
       const channel = IPCChannels.chainNetworkChanged;
       const wrapped = () => listener();

@@ -9,6 +9,7 @@ import {
   chainExecuteNaviYieldSchema,
   chainExecuteSwapSchema,
   chainPrepareTransferSchema,
+  chainPublishDailyBriefMemorySchema,
   chainSetNetworkSchema,
   contactsCreateSchema,
   contactsDeleteSchema,
@@ -18,9 +19,13 @@ import {
 import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
 import { suiNaviYieldService } from "../services/chains/sui/sui-navi-yield.service";
 import { chainFacadeService } from "../services/chains/chainFacadeService";
+import { setDailyBriefAssistantMemory } from "../services/dailyBriefMemoryService";
 import { networkSettingsService } from "../services/network/networkSettingsService";
+import { assistantDataCache } from "../../assistant/cache/assistantDataCache";
+import { readStoredYieldRiskProfile } from "../../packages/core/yield/navi/navi-risk.service";
 import { contactRepository } from "../persistence/repositories/contactRepository";
 import { SUPPORTED_CHAIN_DESCRIPTORS } from "../../config/networks";
+import type { DailyBriefAssistantMemoryPayload } from "../../shared/dailyBriefMemory";
 
 function ok<T>(data: T) {
   return { ok: true as const, data };
@@ -92,6 +97,39 @@ export function registerChainIpcHandlers() {
       return ok(
         await chainFacadeService.getActivityPage(parsed.data.accountId, parsed.data.cursor ?? null),
       );
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainGetDailyBriefBundle, async (_event, payload: unknown) => {
+    const raw = typeof payload === "string" ? { accountId: payload } : payload;
+    const parsed = chainAccountIdSchema.safeParse(raw);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid account id"));
+    }
+    try {
+      const env = networkSettingsService.getSuiEnvironment();
+      const riskProfile = readStoredYieldRiskProfile();
+      const pools = env === "mainnet" ? await assistantDataCache.getNaviPools(env) : [];
+      const positions = await assistantDataCache.getNaviPositionViews(parsed.data.accountId, env);
+      return ok({ pools, positions, riskProfile });
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainPublishDailyBriefMemory, async (_event, payload: unknown) => {
+    const parsed = chainPublishDailyBriefMemorySchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid daily brief memory payload"));
+    }
+    try {
+      setDailyBriefAssistantMemory(
+        parsed.data.accountId,
+        parsed.data.memory as DailyBriefAssistantMemoryPayload,
+      );
+      return ok({ ok: true as const });
     } catch (error) {
       return fail(error);
     }

@@ -3,7 +3,7 @@ import type { SuiChainEnvironment } from "../../../../config/chains/sui";
 import { getSuiClientForEnvironment } from "../../../../main/services/chains/sui/sui-client.service";
 import { NAVI_POOL_CONFIGS, NAVI_RESERVE_PARENT_ID } from "./navi-onchain-pool-config";
 import type { NaviPoolRow, NaviPositionView } from "./navi.types";
-import { riskLabelForSymbol } from "./navi-risk.service";
+import { riskLabelForSymbol } from "./navi-risk.heuristics";
 
 function safeParseFloat(val: unknown): number {
   if (val === null || val === undefined) return 0;

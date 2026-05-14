@@ -16,6 +16,8 @@ import { useNetworkStore } from "@/stores/networkStore";
 import { desktopGetChainBalances } from "@/lib/desktopChain";
 import { shortAddr } from "@/lib/wallet-store";
 import { chainQueryScope } from "@/components/network-wallet-query-sync";
+import { loadDailyBrief } from "../../services/daily-brief/daily-brief.service";
+import type { SuiChainEnvironment } from "../../config/chains/sui";
 
 export const Route = createFileRoute("/home")({
   component: Home,
@@ -78,13 +80,33 @@ function Home() {
     enabled: Boolean(activeAccount?.id && network),
   });
 
+  const briefQuery = useQuery({
+    queryKey: [
+      ...chainQueryScope,
+      "daily-brief-v2",
+      activeAccount?.id ?? "",
+      network?.activeEnvironment ?? "",
+    ],
+    queryFn: async () => {
+      if (!activeAccount || !network) {
+        throw new Error("Missing account or network");
+      }
+      return loadDailyBrief({
+        accountId: activeAccount.id,
+        accountName: activeAccount.name,
+        isSuiAccount: activeAccount.chain === "sui",
+        suiEnvironment: network.activeEnvironment as SuiChainEnvironment,
+        networkLabel: `${network.activeChain} · ${network.activeEnvironment}`,
+      });
+    },
+    enabled: Boolean(activeAccount?.id && network),
+    staleTime: 15 * 60 * 1000,
+  });
+
   const refresh = async () => {
     setGeneratedAt(new Date());
-    await balancesQuery.refetch();
+    await Promise.all([balancesQuery.refetch(), briefQuery.refetch()]);
   };
-
-  const suiRow = balancesQuery.data?.find((b) => b.coinType.endsWith("::sui::SUI"));
-  const otherTokens = balancesQuery.data?.filter((b) => !b.coinType.endsWith("::sui::SUI")) ?? [];
 
   const rows = balancesQuery.data ?? [];
   const totalUsd = useMemo(() => sumUsdValues(rows), [rows]);
@@ -120,8 +142,8 @@ function Home() {
         </p>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card/50 hover:border-brand/40 transition p-5 mb-6 flex items-start gap-4 group">
-        <div className="w-10 h-10 rounded-xl bg-brand/15 text-brand flex items-center justify-center shrink-0">
+      <div className="rounded-2xl border border-border bg-card/50 hover:border-brand/40 transition p-5 sm:p-6 mb-6 flex items-start gap-4 group min-h-[148px]">
+        <div className="w-11 h-11 rounded-xl bg-brand/15 text-brand flex items-center justify-center shrink-0">
           <Sparkles className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -131,12 +153,12 @@ function Home() {
               <button
                 type="button"
                 onClick={() => void refresh()}
-                disabled={balancesQuery.isRefetching}
+                disabled={balancesQuery.isRefetching || briefQuery.isRefetching}
                 aria-label="Refresh balances and brief"
                 className="w-7 h-7 rounded-full hover:bg-secondary/60 text-muted-foreground hover:text-foreground inline-flex items-center justify-center transition disabled:opacity-50"
               >
                 <RefreshCw
-                  className={`w-3.5 h-3.5 ${balancesQuery.isRefetching ? "animate-spin" : ""}`}
+                  className={`w-3.5 h-3.5 ${balancesQuery.isRefetching || briefQuery.isRefetching ? "animate-spin" : ""}`}
                 />
               </button>
               <Link
@@ -149,15 +171,22 @@ function Home() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
-            Generated {formatGenerated(generatedAt)}
+            Generated{" "}
+            {formatGenerated(new Date(briefQuery.data?.generatedAt ?? generatedAt.getTime()))}
           </p>
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {suiRow
-              ? `Native SUI: ${suiRow.balanceFormatted} ${suiRow.symbol}. ${otherTokens.length ? `${otherTokens.length} more token(s) on this account.` : "No other tokens detected."}`
-              : balancesQuery.isError
-                ? "Could not load balances. Check network settings and try again."
-                : "Connect your wallet data appears here once balances load."}
-          </p>
+          {briefQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground text-left">Building your personalized brief…</p>
+          ) : briefQuery.isError ? (
+            <p className="text-sm text-destructive text-left">
+              {(briefQuery.error as Error)?.message ?? "Brief unavailable."}
+            </p>
+          ) : (
+            <ul className="text-sm text-muted-foreground text-left space-y-1.5 leading-snug">
+              {(briefQuery.data?.homeSummaryLines ?? []).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

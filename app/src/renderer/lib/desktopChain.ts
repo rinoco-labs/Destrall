@@ -1,4 +1,9 @@
-import type { ChainNetworkStatePayload, RpcResult } from "../../shared/ipc";
+import type {
+  ChainNetworkStatePayload,
+  DailyBriefChainBundle,
+  RpcResult,
+} from "../../shared/ipc";
+import type { DailyBriefAssistantMemoryPayload } from "../../shared/dailyBriefMemory";
 import type {
   ChainActivityPage,
   SwapExecuteResult,
@@ -73,6 +78,17 @@ export async function desktopExecuteNaviYield(payload: {
   proposalSnapshot: NaviYieldProposalSnapshotV1;
 }): Promise<SwapExecuteResult> {
   return unwrap(api().chain.executeNaviYield(payload));
+}
+
+export async function desktopGetDailyBriefChainBundle(accountId: string): Promise<DailyBriefChainBundle> {
+  return unwrap(api().chain.getDailyBriefChainBundle(accountId));
+}
+
+export async function desktopPublishDailyBriefMemory(payload: {
+  accountId: string;
+  memory: DailyBriefAssistantMemoryPayload;
+}): Promise<{ ok: true }> {
+  return unwrap(api().chain.publishDailyBriefMemory(payload));
 }
 
 export function subscribeChainNetworkChanged(listener: () => void): () => void {

@@ -15,7 +15,8 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": ["src/renderer/*"],
-      "@packages/*": ["src/packages/*"]
+      "@packages/*": ["src/packages/*"],
+      "@services/*": ["src/services/*"]
     }
   },
   "include": ["src/**/*", "forge.env.d.ts"]
