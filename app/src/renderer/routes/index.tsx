@@ -26,7 +26,6 @@ import {
   SUPPORTED_LANGUAGES,
   type AppLanguage,
 } from "@/stores/settingsStore";
-import { MODEL_CATALOG } from "../../ai/modelCatalog";
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useWalletStore } from "@/stores/walletStore";
 import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
@@ -37,7 +36,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Set Up Your Wallet — Vault" },
-      { name: "description", content: "Create a multi-chain wallet and choose your local AI assistant." },
+      { name: "description", content: "Create a multi-chain wallet and set up the on-device assistant." },
     ],
   }),
 });
@@ -79,12 +78,10 @@ function Index() {
   const setAiSetupComplete = useOnboardingStore((s) => s.setAiModelSetupComplete);
   const downloadModel = useAiModelStore((s) => s.downloadModel);
   const refreshAiModels = useAiModelStore((s) => s.refreshFromMain);
-  const selectModelPreference = useAiModelStore((s) => s.selectModel);
-  const downloadedModelIds = useAiModelStore((s) => s.downloadedModelIds);
-  const selectedModelId = useAiModelStore((s) => s.selectedModelId);
-  const downloadingModelId = useAiModelStore((s) => s.downloadingModelId);
+  const isDownloaded = useAiModelStore((s) => s.isDownloaded);
+  const isDownloading = useAiModelStore((s) => s.isDownloading);
   const downloadProgress = useAiModelStore((s) => s.downloadProgress);
-  const modelSetupError = useAiModelStore((s) => s.lastError);
+  const modelSetupError = useAiModelStore((s) => s.error);
   const createWallet = useWalletStore((s) => s.createWallet);
   const importWallet = useWalletStore((s) => s.importWallet);
 
@@ -125,11 +122,6 @@ function Index() {
     const second = Math.min(creationWords.length - 1, 8);
     return [first, second] as const;
   }, [creationWords.length]);
-
-  const downloadedMap = useMemo(
-    () => Object.fromEntries(MODEL_CATALOG.map((m) => [m.id, downloadedModelIds.includes(m.id)])),
-    [downloadedModelIds],
-  );
 
   useEffect(() => {
     if (step !== "model" || !isDestrallDesktop()) return;
@@ -232,10 +224,10 @@ function Index() {
     void commitWallet();
   };
 
-  const startDownload = async (id: string) => {
+  const startDownload = async () => {
     if (!isDestrallDesktop()) return;
     try {
-      await downloadModel(id);
+      await downloadModel();
     } catch {
       /* error visible via modelSetupError */
     }
@@ -250,10 +242,6 @@ function Index() {
   const skipModelSetup = () => {
     void refreshAiModels();
     finish();
-  };
-
-  const setSelectedModel = (id: string) => {
-    void selectModelPreference(id);
   };
 
   const phraseConfirmed =
@@ -335,13 +323,11 @@ function Index() {
           submitError={submitError}
           isSubmitting={isSubmitting}
           createdAddress={createdAddress}
-          selectedModel={selectedModelId}
-          downloading={downloadingModelId}
-          downloaded={downloadedMap}
+          isDownloaded={isDownloaded}
+          isDownloading={isDownloading}
           downloadProgress={downloadProgress}
           modelSetupError={modelSetupError}
           startDownload={startDownload}
-          setSelectedModel={setSelectedModel}
           finish={finish}
           skipModelSetup={skipModelSetup}
           t={t}
@@ -406,13 +392,11 @@ type RightPanelProps = {
   submitError: string | null;
   isSubmitting: boolean;
   createdAddress: string | null;
-  selectedModel: string | null;
-  downloading: string | null;
-  downloaded: Record<string, boolean>;
+  isDownloaded: boolean;
+  isDownloading: boolean;
   downloadProgress: number;
   modelSetupError: string | null;
-  startDownload: (id: string) => void | Promise<void>;
-  setSelectedModel: (id: string) => void;
+  startDownload: () => void | Promise<void>;
   finish: () => void;
   skipModelSetup: () => void;
   t: ReturnType<typeof useTranslation>["t"];
@@ -456,13 +440,11 @@ function RightPanel(props: RightPanelProps) {
     submitError,
     isSubmitting,
     createdAddress,
-    selectedModel,
-    downloading,
-    downloaded,
+    isDownloaded,
+    isDownloading,
     downloadProgress,
     modelSetupError,
     startDownload,
-    setSelectedModel,
     finish,
     skipModelSetup,
     t,
@@ -565,13 +547,11 @@ function RightPanel(props: RightPanelProps) {
 
       {step === "model" && (
         <ModelStep
-          selected={selectedModel}
-          downloading={downloading}
-          downloaded={downloaded}
+          isDownloaded={isDownloaded}
+          isDownloading={isDownloading}
           downloadProgress={downloadProgress}
           modelSetupError={modelSetupError}
           onDownload={startDownload}
-          onSelect={setSelectedModel}
           onContinue={finish}
           onSkip={skipModelSetup}
           onBack={() => setStep("created")}
@@ -994,46 +974,48 @@ function CreatedStep({
 }
 
 function ModelStep({
-  selected,
-  downloading,
-  downloaded,
+  isDownloaded,
+  isDownloading,
   downloadProgress,
   modelSetupError,
   onDownload,
-  onSelect,
   onContinue,
   onSkip,
   onBack,
 }: {
-  selected: string | null;
-  downloading: string | null;
-  downloaded: Record<string, boolean>;
+  isDownloaded: boolean;
+  isDownloading: boolean;
   downloadProgress: number;
   modelSetupError: string | null;
-  onDownload: (id: string) => void | Promise<void>;
-  onSelect: (id: string) => void;
+  onDownload: () => void | Promise<void>;
   onContinue: () => void;
   onSkip: () => void;
   onBack: () => void;
 }) {
   const { t } = useTranslation();
-  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
-  const activeModelId = useAiModelStore((s) => s.activeModelId);
+  const isLoaded = useAiModelStore((s) => s.isLoaded);
+  const isLoading = useAiModelStore((s) => s.isLoading);
+  const loadModel = useAiModelStore((s) => s.loadModel);
 
-  const tierLabel = (c: (typeof MODEL_CATALOG)[number]["category"]) =>
-    c === "lightweight" ? "Lightweight" : c === "balanced" ? "Balanced" : "High quality";
+  useEffect(() => {
+    if (!isDestrallDesktop()) return;
+    if (isDownloaded && !isLoaded && !isDownloading && !isLoading) {
+      void loadModel().catch(() => {
+        /* surfaced via modelSetupError */
+      });
+    }
+  }, [isDownloaded, isLoaded, isDownloading, isLoading, loadModel]);
 
-  const sizeLabel = (bytes?: number) => {
-    if (!bytes) return "";
-    if (bytes >= 1024 ** 3) return `~${(bytes / 1024 ** 3).toFixed(2)} GB`;
-    return `~${(bytes / 1024 ** 2).toFixed(0)} MB`;
-  };
+  const ready = isDownloaded && isLoaded;
 
-  const ready =
-    !!selected &&
-    !!downloaded[selected] &&
-    isModelLoaded &&
-    activeModelId === selected;
+  let phaseLabel = "";
+  if (isDownloading) {
+    phaseLabel = t("onboarding.aiPhaseDownloading", "Downloading…");
+  } else if (isLoading) {
+    phaseLabel = t("onboarding.aiPhasePreparing", "Preparing…");
+  } else if (ready) {
+    phaseLabel = t("onboarding.aiPhaseReady", "Ready");
+  }
 
   return (
     <>
@@ -1046,10 +1028,10 @@ function ModelStep({
         <ArrowLeft className="w-5 h-5" />
       </button>
       <h1 className="text-3xl font-bold tracking-tight text-foreground">
-        {t("onboarding.chooseModel")}
+        {t("onboarding.downloadAiTitle", "Download AI")}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground max-w-sm">
-        {t("onboarding.chooseModelDesc")}
+        {t("onboarding.downloadAiDesc", "Download the AI required to use the assistant.")}
       </p>
 
       {modelSetupError ? (
@@ -1058,62 +1040,28 @@ function ModelStep({
         </p>
       ) : null}
 
-      {downloading ? (
+      {isDownloading || isLoading ? (
         <div className="mt-4 w-full max-w-md space-y-2">
-          <p className="text-xs text-muted-foreground">Downloading model… {downloadProgress}%</p>
-          <Progress value={downloadProgress} className="h-2" />
+          <p className="text-xs text-muted-foreground">
+            {phaseLabel} {isDownloading ? `${downloadProgress}%` : ""}
+          </p>
+          <Progress value={isDownloading ? downloadProgress : isLoading ? 70 : 0} className="h-2" />
         </div>
       ) : null}
 
-      <div className="mt-6 space-y-5 w-full max-w-md">
-        {MODEL_CATALOG.map((m) => {
-          const isDl = downloading === m.id;
-          const isReady = downloaded[m.id];
-          const isSelected = selected === m.id;
-          return (
-            <div key={m.id}>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                {tierLabel(m.category)}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isReady) {
-                    onSelect(m.id);
-                  } else {
-                    void onDownload(m.id);
-                  }
-                }}
-                disabled={!!downloading && !isDl}
-                className={`w-full flex items-center gap-4 rounded-2xl border px-5 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-brand/40 ${
-                  isSelected
-                    ? "border-brand bg-secondary/60"
-                    : "border-border bg-background dark:bg-background/50 hover:border-brand/60"
-                }`}
-              >
-                <span className="flex-1">
-                  <span className="flex items-baseline gap-2 flex-wrap">
-                    <span className="text-base font-semibold text-foreground">{m.name}</span>
-                    <span className="text-xs text-muted-foreground">{sizeLabel(m.sizeBytes)}</span>
-                  </span>
-                  <span className="block text-sm text-muted-foreground mt-0.5">{m.description}</span>
-                </span>
-                <span className="shrink-0 w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-foreground">
-                  {isDl ? (
-                    <span className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                  ) : isReady ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                </span>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
       <div className="mt-8 w-full max-w-md space-y-3">
+        {!isDownloaded ? (
+          <PrimaryButton
+            onClick={() => {
+              void onDownload();
+            }}
+            disabled={isDownloading}
+          >
+            <Download className="w-4 h-4" />
+            {t("onboarding.downloadAiButton", "Download")}
+          </PrimaryButton>
+        ) : null}
+
         <PrimaryButton onClick={onContinue} disabled={!ready}>
           {t("onboarding.continueToHome")} <ArrowRight className="w-4 h-4" />
         </PrimaryButton>
@@ -1122,7 +1070,7 @@ function ModelStep({
           onClick={onSkip}
           className="w-full text-sm font-medium text-muted-foreground hover:text-foreground transition py-2"
         >
-          Skip for now
+          {t("onboarding.skipForNow")}
         </button>
       </div>
     </>

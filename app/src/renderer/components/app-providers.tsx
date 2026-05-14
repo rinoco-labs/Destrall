@@ -31,12 +31,12 @@ export function AppProviders(): null {
   const language = useSettingsStore((s) => s.language);
   const hasHydrated = useSettingsStore((s) => s.hasHydrated);
   const setResolvedTheme = useSettingsStore((s) => s.setResolvedTheme);
-  const initializeModelState = useAiModelStore((s) => s.initializeModelState);
+  const initializeModel = useAiModelStore((s) => s.initializeModel);
 
   useEffect(() => {
     if (!isDestrallDesktop()) return;
-    void initializeModelState();
-  }, [initializeModelState]);
+    void initializeModel();
+  }, [initializeModel]);
 
   // Theme application
   useEffect(() => {

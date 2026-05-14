@@ -1,11 +1,11 @@
-import type { ModelCatalogEntry } from "../../ai/modelCatalog";
+import type { InternalGgufModelConfig } from "../../ai/internalModelConfig";
 import { modelStorageService } from "./modelStorageService";
 
 export type DownloadProgressHandler = (fraction: number) => void;
 
 export class ModelDownloadService {
   async downloadModel(
-    entry: ModelCatalogEntry,
+    entry: InternalGgufModelConfig,
     options?: {
       onProgress?: DownloadProgressHandler;
       signal?: AbortSignal;

@@ -1,4 +1,3 @@
-import type { ModelCatalogEntry } from "../ai/modelCatalog";
 import type { AssistantChatRow, AssistantMessageRow } from "./assistantChat";
 import type { WalletAccount, WalletStatusSnapshot, ChainId } from "./wallet/types";
 import type {
@@ -32,12 +31,11 @@ export type LlmInstallStatus =
   | "failed"
   | "invalid";
 
-export type LlmModelView = ModelCatalogEntry & {
+/** Install / disk metadata for the single built-in assistant model (no vendor names in UI). */
+export type AssistantAiModelState = {
   installed: boolean;
-  selected: boolean;
   status: LlmInstallStatus;
   localPath: string | null;
-  fileName: string | null;
   downloadProgress: number | null;
   errorMessage: string | null;
   installedAt: number | null;
@@ -45,20 +43,17 @@ export type LlmModelView = ModelCatalogEntry & {
 };
 
 export type LlmStateSnapshot = {
-  models: LlmModelView[];
-  selectedModelId: string | null;
+  model: AssistantAiModelState;
 };
 
 export type AssistantRuntimeState = {
-  selectedModelId: string | null;
   status: "idle" | "loading" | "ready" | "failed";
   errorMessage: string | null;
 };
 
 export type ModelProgressEvent = {
-  modelId: string;
   progress: number;
-  status: "downloading" | "ready" | "failed";
+  status: "downloading" | "loading" | "ready" | "failed";
   message: string;
 };
 
@@ -157,11 +152,11 @@ export type DestrallApi = {
   };
   llm: {
     getState: () => Promise<RpcResult<LlmStateSnapshot>>;
-    installModel: (modelId: string) => Promise<RpcResult<LlmStateSnapshot>>;
-    selectModel: (modelId: string) => Promise<RpcResult<LlmStateSnapshot>>;
+    installModel: () => Promise<RpcResult<LlmStateSnapshot>>;
+    loadModel: () => Promise<RpcResult<LlmStateSnapshot>>;
     unloadModel: () => Promise<RpcResult<LlmStateSnapshot>>;
-    deleteModel: (modelId: string) => Promise<RpcResult<LlmStateSnapshot>>;
-    cancelDownload: (modelId: string) => Promise<RpcResult<{ ok: true }>>;
+    deleteModel: () => Promise<RpcResult<LlmStateSnapshot>>;
+    cancelDownload: () => Promise<RpcResult<{ ok: true }>>;
     assistantRuntime: () => Promise<RpcResult<AssistantRuntimeState>>;
     chat: (payload: AssistantChatRequest) => Promise<RpcResult<AssistantChatResponse>>;
     onModelProgress: (listener: (event: ModelProgressEvent) => void) => () => void;
@@ -231,7 +226,7 @@ export const IPCChannels = {
   contactsDelete: "contacts:delete",
   llmGetState: "llm:get-state",
   llmInstallModel: "llm:install-model",
-  llmSelectModel: "llm:select-model",
+  llmLoadModel: "llm:load-model",
   llmUnloadModel: "llm:unload-model",
   llmDeleteModel: "llm:delete-model",
   llmCancelDownload: "llm:cancel-download",

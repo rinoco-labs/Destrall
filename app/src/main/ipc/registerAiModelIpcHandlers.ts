@@ -34,19 +34,17 @@ export function registerAiModelIpcHandlers() {
     }
   });
 
-  ipcMain.handle(IPCChannels.llmInstallModel, async (event, payload: unknown) => {
-    const modelId = z.string().min(1).parse(payload);
+  ipcMain.handle(IPCChannels.llmInstallModel, async (event) => {
     try {
-      return ok(await aiModelMainService.installModel(modelId, event.sender));
+      return ok(await aiModelMainService.installModel(event.sender));
     } catch (error) {
       return fail(error);
     }
   });
 
-  ipcMain.handle(IPCChannels.llmSelectModel, async (event, payload: unknown) => {
-    const modelId = z.string().min(1).parse(payload);
+  ipcMain.handle(IPCChannels.llmLoadModel, async (event) => {
     try {
-      return ok(await aiModelMainService.selectAndLoadModel(modelId, event.sender));
+      return ok(await aiModelMainService.loadModel(event.sender));
     } catch (error) {
       return fail(error);
     }
@@ -60,19 +58,17 @@ export function registerAiModelIpcHandlers() {
     }
   });
 
-  ipcMain.handle(IPCChannels.llmDeleteModel, async (_event, payload: unknown) => {
-    const modelId = z.string().min(1).parse(payload);
+  ipcMain.handle(IPCChannels.llmDeleteModel, async () => {
     try {
-      return ok(await aiModelMainService.deleteModel(modelId));
+      return ok(await aiModelMainService.deleteModel());
     } catch (error) {
       return fail(error);
     }
   });
 
-  ipcMain.handle(IPCChannels.llmCancelDownload, async (_event, payload: unknown) => {
-    const modelId = z.string().min(1).parse(payload);
+  ipcMain.handle(IPCChannels.llmCancelDownload, async () => {
     try {
-      aiModelMainService.cancelDownload(modelId);
+      aiModelMainService.cancelDownload();
       return ok({ ok: true as const });
     } catch (error) {
       return fail(error);

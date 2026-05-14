@@ -71,12 +71,11 @@ const api: DestrallApi = {
   },
   llm: {
     getState: () => ipcRenderer.invoke(IPCChannels.llmGetState),
-    installModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmInstallModel, modelId),
-    selectModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmSelectModel, modelId),
+    installModel: () => ipcRenderer.invoke(IPCChannels.llmInstallModel),
+    loadModel: () => ipcRenderer.invoke(IPCChannels.llmLoadModel),
     unloadModel: () => ipcRenderer.invoke(IPCChannels.llmUnloadModel),
-    deleteModel: (modelId: string) => ipcRenderer.invoke(IPCChannels.llmDeleteModel, modelId),
-    cancelDownload: (modelId: string) =>
-      ipcRenderer.invoke(IPCChannels.llmCancelDownload, modelId),
+    deleteModel: () => ipcRenderer.invoke(IPCChannels.llmDeleteModel),
+    cancelDownload: () => ipcRenderer.invoke(IPCChannels.llmCancelDownload),
     assistantRuntime: () => ipcRenderer.invoke(IPCChannels.llmAssistantRuntime),
     chat: (payload: AssistantChatRequest) => ipcRenderer.invoke(IPCChannels.llmChat, payload),
     onModelProgress: (listener: (event: ModelProgressEvent) => void) => {

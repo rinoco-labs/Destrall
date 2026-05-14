@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { MODEL_CATALOG, MODEL_CATALOG_BY_ID, type ModelCatalogEntry } from "../../ai/modelCatalog";
+import { INTERNAL_AI_MODEL, type InternalGgufModelConfig } from "../../ai/internalModelConfig";
 
 export class ModelStorageService {
   getModelDirectory(): string {
@@ -12,11 +12,11 @@ export class ModelStorageService {
     return dir;
   }
 
-  getModelFilePath(entry: ModelCatalogEntry): string {
+  getModelFilePath(entry: InternalGgufModelConfig): string {
     return path.join(this.getModelDirectory(), entry.filename);
   }
 
-  modelFileExists(entry: ModelCatalogEntry): boolean {
+  modelFileExists(entry: InternalGgufModelConfig): boolean {
     const primary = this.getModelFilePath(entry);
     if (fs.existsSync(primary) && fs.statSync(primary).isFile()) return true;
     for (const name of entry.fallbackFileNames) {
@@ -26,9 +26,9 @@ export class ModelStorageService {
     return false;
   }
 
-  resolveExistingPathForModelId(modelId: string): string | null {
-    const entry = MODEL_CATALOG_BY_ID[modelId];
-    if (!entry) return null;
+  /** Resolve an existing GGUF path for the built-in assistant weights (includes legacy filenames). */
+  resolveExistingPath(): string | null {
+    const entry = INTERNAL_AI_MODEL;
     const candidates = [entry.filename, ...entry.fallbackFileNames];
     for (const name of candidates) {
       const p = path.join(this.getModelDirectory(), name);
@@ -63,10 +63,14 @@ export class ModelStorageService {
     return { ok: true };
   }
 
-  deleteModelFiles(entry: ModelCatalogEntry): void {
+  deleteModelFiles(entry: InternalGgufModelConfig): void {
     const paths = new Set<string>();
     paths.add(this.getModelFilePath(entry));
     for (const name of entry.fallbackFileNames) {
+      paths.add(path.join(this.getModelDirectory(), name));
+    }
+    /** Remove obsolete multi-model artifacts safely */
+    for (const name of ["gemma-4-e2b-it-q4_0.gguf", "gemma-4-e2b-it-Q4_0.gguf"]) {
       paths.add(path.join(this.getModelDirectory(), name));
     }
     for (const p of paths) {
@@ -78,18 +82,6 @@ export class ModelStorageService {
         /* ignore per-file delete errors */
       }
     }
-  }
-
-  listDownloadedModelIds(): string[] {
-    const dir = this.getModelDirectory();
-    if (!fs.existsSync(dir)) return [];
-    const downloaded: string[] = [];
-    for (const entry of MODEL_CATALOG) {
-      if (this.modelFileExists(entry)) {
-        downloaded.push(entry.id);
-      }
-    }
-    return downloaded;
   }
 }
 

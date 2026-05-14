@@ -112,10 +112,11 @@ function SettingsPage() {
   const autoLockMinutes = useSettingsStore((s) => s.autoLockMinutes);
   const setAutoLockMinutes = useSettingsStore((s) => s.setAutoLockMinutes);
   const refreshAiModels = useAiModelStore((s) => s.refreshFromMain);
-  const availableModels = useAiModelStore((s) => s.availableModels);
-  const selectedModelId = useAiModelStore((s) => s.selectedModelId);
-  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
-  const activeModelId = useAiModelStore((s) => s.activeModelId);
+  const isDownloaded = useAiModelStore((s) => s.isDownloaded);
+  const isDownloading = useAiModelStore((s) => s.isDownloading);
+  const isLoading = useAiModelStore((s) => s.isLoading);
+  const isLoaded = useAiModelStore((s) => s.isLoaded);
+  const aiError = useAiModelStore((s) => s.error);
 
   const initializeNetwork = useNetworkStore((s) => s.initializeNetworkState);
   const network = useNetworkStore((s) => s.network);
@@ -136,10 +137,14 @@ function SettingsPage() {
   // const currencyLabel = currency;
   const autoLockLabel =
     AUTO_LOCK_OPTIONS.find((a) => a.value === autoLockMinutes)?.label ?? `${autoLockMinutes} min`;
-  const selectedMeta = availableModels.find((m) => m.id === (activeModelId ?? selectedModelId));
-  const aiModelLabel = selectedMeta
-    ? `${selectedMeta.name}${isModelLoaded ? "" : " (not loaded)"}`
-    : t("settings.aiModelNone", "None selected");
+  const aiStatusLabel = (() => {
+    if (aiError && !isDownloading && !isLoading) return t("settings.aiStatusError", "Error");
+    if (isDownloading) return t("settings.aiStatusDownloading", "Downloading");
+    if (isLoading) return t("settings.aiStatusLoading", "Loading");
+    if (isLoaded) return t("settings.aiStatusLoaded", "Loaded");
+    if (isDownloaded) return t("settings.aiStatusReady", "Ready");
+    return t("settings.aiStatusNotDownloaded", "Not downloaded");
+  })();
   const personalityLabel =
     AI_PERSONALITIES.find((p) => p.id === aiPersonality)?.name ?? aiPersonality;
 
@@ -275,8 +280,8 @@ function SettingsPage() {
         <div className="rounded-2xl border border-border bg-card/40 backdrop-blur divide-y divide-border overflow-hidden mb-8">
           <SettingRow
             icon={Brain}
-            label={t("settings.aiModel")}
-            value={aiModelLabel}
+            label={t("settings.assistantAi", "Assistant AI")}
+            value={aiStatusLabel}
             onClick={() => setOpenModal("aiModel")}
           />
           <SettingRow
@@ -379,8 +384,11 @@ function SettingsPage() {
       <AiModelModal
         open={openModal === "aiModel"}
         onOpenChange={(o) => !o && setOpenModal(null)}
-        title={t("settings.aiModel")}
-        description={t("settings.chooseAiModel", "Select which local AI model to use.")}
+        title={t("settings.assistantAi", "Assistant AI")}
+        description={t(
+          "settings.assistantAiDescription",
+          "Download, reload, or remove the on-device assistant.",
+        )}
       />
 
       <SelectModal<AiPersonality>

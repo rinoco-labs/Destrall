@@ -323,13 +323,15 @@ function AssistantPage() {
   const dragDepth = useRef(0);
 
   const activeAccountId = useWalletStore((s) => s.activeAccountId);
-  const isModelLoaded = useAiModelStore((s) => s.isModelLoaded);
-  const runtimeError = useAiModelStore((s) => s.runtimeError);
-  const selectedMeta = useAiModelStore((s) =>
-    s.availableModels.find((m) => m.id === (s.activeModelId ?? s.selectedModelId)),
-  );
-  const initializeModelState = useAiModelStore((s) => s.initializeModelState);
+  const isLoaded = useAiModelStore((s) => s.isLoaded);
+  const isDownloaded = useAiModelStore((s) => s.isDownloaded);
+  const isLoading = useAiModelStore((s) => s.isLoading);
+  const isDownloading = useAiModelStore((s) => s.isDownloading);
+  const runtimeError = useAiModelStore((s) => s.error);
+  const initializeModel = useAiModelStore((s) => s.initializeModel);
   const refreshAi = useAiModelStore((s) => s.refreshFromMain);
+  const downloadModel = useAiModelStore((s) => s.downloadModel);
+  const loadModel = useAiModelStore((s) => s.loadModel);
 
   const initializeForAccount = useAssistantChatStore((s) => s.initializeForAccount);
   const createNewChat = useAssistantChatStore((s) => s.createNewChat);
@@ -379,8 +381,8 @@ function AssistantPage() {
   }, [activeAccountId, search, searchChats]);
 
   useEffect(() => {
-    void initializeModelState();
-  }, [initializeModelState]);
+    void initializeModel();
+  }, [initializeModel]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -477,7 +479,7 @@ function AssistantPage() {
       return;
     }
 
-    if (!isModelLoaded) {
+    if (!isLoaded) {
       void refreshAi();
       setOverlayMessages((prev) => [
         ...prev,
@@ -485,7 +487,7 @@ function AssistantPage() {
         {
           id: crypto.randomUUID(),
           kind: "assistant",
-          text: "No local model is loaded. Use **Settings → AI Model** to download and load a model, then come back here.",
+          text: "The assistant AI is not ready yet. Wait for it to finish loading, or open **Settings** to download it.",
         },
       ]);
       setMessage("");
@@ -587,19 +589,6 @@ function AssistantPage() {
               {isDestrallDesktop() && chatError ? (
                 <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {chatError}
-                </div>
-              ) : null}
-              {isDestrallDesktop() && runtimeError ? (
-                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                  {runtimeError}
-                </div>
-              ) : null}
-              {isDestrallDesktop() && !isModelLoaded ? (
-                <div className="rounded-xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground flex flex-wrap items-center gap-2">
-                  <span>Local model is not loaded.</span>
-                  <Link to="/settings" className="font-semibold text-brand hover:underline">
-                    Open Settings
-                  </Link>
                 </div>
               ) : null}
               {threadItems.map((item) => {
@@ -760,18 +749,108 @@ function AssistantPage() {
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={assistantStreaming}
+                disabled={assistantStreaming || !isLoaded}
                 aria-label="Send message"
                 className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-brand text-brand-foreground hover:opacity-90 transition shrink-0 mb-1"
               >
                 <Send className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              {selectedMeta
-                ? `${selectedMeta.name}${isModelLoaded ? " · loaded" : " · not loaded"}`
-                : "No model selected"}
-            </p>
+            {isDestrallDesktop() && !isLoaded ? (
+              <div className="mt-2 rounded-xl border border-border bg-card/60 px-4 py-3 text-sm space-y-3">
+                {!isDownloaded ? (
+                  <>
+                    {runtimeError ? (
+                      <p className="text-destructive font-medium" role="alert">
+                        {runtimeError}
+                      </p>
+                    ) : null}
+                    <p className="text-muted-foreground">
+                      The assistant needs an on-device AI download before you can chat. Downloads stay on this
+                      computer.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void downloadModel()}
+                        disabled={isDownloading}
+                        className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+                      >
+                        {isDownloading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : null}
+                        Download AI
+                      </button>
+                      <Link
+                        to="/settings"
+                        className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/60 transition"
+                      >
+                        Open Settings
+                      </Link>
+                    </div>
+                  </>
+                ) : isDownloading || isLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                    <span>{isDownloading ? "Downloading AI…" : "Loading AI…"}</span>
+                  </div>
+                ) : runtimeError ? (
+                  <>
+                    <p className="text-destructive font-medium">{runtimeError}</p>
+                    <p className="text-muted-foreground">
+                      Try reloading the assistant AI. If this keeps happening, open Settings, use Delete AI, then
+                      download again.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadModel()}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+                      >
+                        Reload AI
+                      </button>
+                      <Link
+                        to="/settings"
+                        className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/60 transition"
+                      >
+                        Open Settings
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">
+                      The assistant AI is installed but not running yet. Reload it to start chatting, or refresh status
+                      if you just finished setup on another screen.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadModel()}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-full bg-brand text-brand-foreground px-4 py-2 text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+                      >
+                        Reload AI
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void refreshAi()}
+                        className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/60 transition"
+                      >
+                        Refresh status
+                      </button>
+                      <Link
+                        to="/settings"
+                        className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/60 transition"
+                      >
+                        Open Settings
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -26,24 +26,24 @@ export async function desktopLlmGetState(): Promise<LlmStateSnapshot> {
   return unwrap(api().llm.getState());
 }
 
-export async function desktopLlmInstallModel(modelId: string): Promise<LlmStateSnapshot> {
-  return unwrap(api().llm.installModel(modelId));
+export async function desktopLlmInstallModel(): Promise<LlmStateSnapshot> {
+  return unwrap(api().llm.installModel());
 }
 
-export async function desktopLlmSelectModel(modelId: string): Promise<LlmStateSnapshot> {
-  return unwrap(api().llm.selectModel(modelId));
+export async function desktopLlmLoadModel(): Promise<LlmStateSnapshot> {
+  return unwrap(api().llm.loadModel());
 }
 
 export async function desktopLlmUnloadModel(): Promise<LlmStateSnapshot> {
   return unwrap(api().llm.unloadModel());
 }
 
-export async function desktopLlmDeleteModel(modelId: string): Promise<LlmStateSnapshot> {
-  return unwrap(api().llm.deleteModel(modelId));
+export async function desktopLlmDeleteModel(): Promise<LlmStateSnapshot> {
+  return unwrap(api().llm.deleteModel());
 }
 
-export async function desktopLlmCancelDownload(modelId: string): Promise<void> {
-  await unwrap(api().llm.cancelDownload(modelId));
+export async function desktopLlmCancelDownload(): Promise<void> {
+  await unwrap(api().llm.cancelDownload());
 }
 
 export async function desktopLlmAssistantRuntime(): Promise<AssistantRuntimeState> {
