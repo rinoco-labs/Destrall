@@ -108,7 +108,10 @@ class ChainFacadeService {
     return { digest: result.digest, explorerUrl: result.explorerUrl };
   }
 
-  async buildAssistantWalletContext(accountId: string): Promise<string> {
+  async buildAssistantWalletContext(
+    accountId: string,
+    options?: { balances?: TokenBalanceView[] },
+  ): Promise<string> {
     try {
       const account = walletService.getWalletAccount(accountId);
       if (!account) {
@@ -123,7 +126,7 @@ class ChainFacadeService {
         `Address: ${account.address}`,
       ];
       if (account.chain === "sui") {
-        const balances = await this.getTokenBalances(accountId);
+        const balances = options?.balances ?? (await this.getTokenBalances(accountId));
         if (balances.length) {
           lines.push("Token balances (formatted):");
           for (const b of balances.slice(0, 20)) {

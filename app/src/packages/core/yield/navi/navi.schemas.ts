@@ -5,7 +5,7 @@ const suiEnvSchema = z.enum(["mainnet", "testnet", "devnet"]);
 export const listYieldPoolsInputSchema = z.object({
   asset: z.string().max(32).optional(),
   sortBy: z.enum(["apy", "tvl", "risk"]).optional(),
-  riskProfile: z.enum(["conservative", "balanced", "aggressive"]).optional(),
+  riskProfile: z.enum(["conservative", "balanced", "aggressive", "max_yield"]).optional(),
 });
 
 export const getYieldPositionsInputSchema = z.object({

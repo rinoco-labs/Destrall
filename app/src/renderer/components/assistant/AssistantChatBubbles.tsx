@@ -66,6 +66,8 @@ export type WalletPayload =
       totalUsd?: string;
       totalNative?: string;
       holdings: WalletHolding[];
+      /** Optional deterministic concentration line from the recommendation engine. */
+      concentrationNote?: string;
     }
   | {
       view: "yield";
@@ -405,6 +407,12 @@ export function WalletBubble({ payload }: { payload: WalletPayload }) {
             </div>
           )}
         </div>
+
+        {payload.view === "portfolio" && payload.concentrationNote ? (
+          <p className="px-4 py-2 text-xs text-muted-foreground border-b border-border/40 bg-muted/20">
+            {payload.concentrationNote}
+          </p>
+        ) : null}
 
         {payload.view === "portfolio" ? (
           holdings.length === 0 ? (

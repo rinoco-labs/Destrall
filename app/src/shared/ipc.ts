@@ -67,6 +67,8 @@ export type AssistantChatRequest = {
   accountId: string;
   language: string;
   personalityId: string;
+  /** Optional summary of pending proposal cards in the active chat (non-secret). */
+  pendingProposalsSummary?: string;
 };
 
 /** LLM reply plus optional structured UI blocks (JSON metadata for assistant_messages). */

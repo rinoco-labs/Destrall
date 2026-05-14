@@ -99,7 +99,10 @@ export const listYieldPoolsFunctionSchema = {
     properties: {
       asset: { type: "string", description: "Optional filter by asset symbol." },
       sortBy: { type: "string", description: "Optional: apy | tvl | risk" },
-      riskProfile: { type: "string", description: "Optional: conservative | balanced | aggressive" },
+      riskProfile: {
+        type: "string",
+        description: "Optional: conservative | balanced | aggressive | max_yield",
+      },
     },
     required: [],
   },

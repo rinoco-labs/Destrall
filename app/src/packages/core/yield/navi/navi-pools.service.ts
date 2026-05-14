@@ -8,7 +8,7 @@ import { riskLabelForSymbol } from "./navi-risk.service";
 
 let cachedPools: NaviPoolRow[] | null = null;
 let lastPoolFetchTime = 0;
-const CACHE_TTL = 60_000;
+const CACHE_TTL = 5 * 60_000;
 
 function normalizeCoinType(ct: string): string {
   if (!ct) return "";

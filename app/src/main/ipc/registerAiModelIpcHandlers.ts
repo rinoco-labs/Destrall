@@ -23,6 +23,7 @@ const assistantChatSchema = z.object({
   accountId: z.string().min(1),
   language: z.string(),
   personalityId: z.string(),
+  pendingProposalsSummary: z.string().max(4000).optional(),
 });
 
 export function registerAiModelIpcHandlers() {

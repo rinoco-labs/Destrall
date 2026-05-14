@@ -475,6 +475,7 @@ function StructuredBlockView({
             network: block.network,
             totalUsd,
             holdings,
+            concentrationNote: block.concentrationNote,
           }}
         />
       );

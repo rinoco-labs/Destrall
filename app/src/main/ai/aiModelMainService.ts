@@ -12,8 +12,8 @@ import {
 } from "../../shared/ipc";
 import { getDatabase } from "../persistence/database";
 import { LlmModelRepository, type PersistedLlmModelInstall } from "../persistence/repositories/llmModelRepository";
-import { buildAssistantStructuredBlocks } from "../services/assistant/assistantStructuredOrchestrator";
-import { buildAssistantContextDocument } from "../../assistant/assistantContextBuilder";
+import { planAssistantStructuredTurn } from "../services/assistant/assistantStructuredOrchestrator";
+import { buildCompactAssistantContext } from "../../assistant/contextBuilder";
 import { assistantInferenceService, type ChatTurnMessage } from "./assistantInferenceService";
 import { modelDownloadService } from "./modelDownloadService";
 import { modelRuntimeService } from "./modelRuntimeService";
@@ -406,9 +406,9 @@ export class AiModelMainService {
     }
   }
 
-  async buildWalletContext(accountId: string): Promise<string> {
+  async buildWalletContext(accountId: string, pendingProposalsSummary?: string): Promise<string> {
     try {
-      return await buildAssistantContextDocument(accountId);
+      return await buildCompactAssistantContext(accountId, { pendingProposalsSummary });
     } catch {
       return "";
     }
@@ -419,23 +419,56 @@ export class AiModelMainService {
     accountId: string;
     language: string;
     personalityId: string;
+    pendingProposalsSummary?: string;
   }): Promise<{ content: string; metadata?: string | null }> {
-    const model = modelRuntimeService.getModelOrThrow();
+    const t0 = performance.now();
+    console.info(`[assistant] chat start account=${payload.accountId}`);
     const last = payload.messages[payload.messages.length - 1];
     let metadata: string | null = null;
-    let walletContext = await this.buildWalletContext(payload.accountId);
+
     if (last?.role === "user") {
-      const { blocks, systemAddendum } = await buildAssistantStructuredBlocks(
-        payload.accountId,
-        last.content,
+      const tPlan = performance.now();
+      const plan = await planAssistantStructuredTurn(payload.accountId, last.content);
+      console.info(
+        `[assistant] local planner ${(performance.now() - tPlan).toFixed(0)}ms mode=${plan.mode}`,
       );
-      if (blocks.length > 0) {
-        metadata = JSON.stringify({ v: 1, structured: blocks });
+
+      if (plan.blocks.length > 0) {
+        metadata = JSON.stringify({ v: 1, structured: plan.blocks });
       }
-      if (systemAddendum) {
-        walletContext = `${walletContext}${systemAddendum}`;
+
+      if (plan.mode === "deterministic") {
+        console.info(`[assistant] skip llm total ${(performance.now() - t0).toFixed(0)}ms`);
+        return { content: plan.caption, metadata };
       }
+
+      const tCtx = performance.now();
+      let walletContext = await this.buildWalletContext(payload.accountId, payload.pendingProposalsSummary);
+      console.info(`[assistant] build context ${(performance.now() - tCtx).toFixed(0)}ms`);
+
+      if (plan.systemAddendum) {
+        walletContext = `${walletContext}${plan.systemAddendum}`;
+      }
+
+      const tLlm = performance.now();
+      const model = modelRuntimeService.getModelOrThrow();
+      const content = await assistantInferenceService.generateReply({
+        model,
+        messages: payload.messages,
+        language: payload.language,
+        personalityId: payload.personalityId,
+        walletContext,
+      });
+      console.info(
+        `[assistant] llm duration ${(performance.now() - tLlm).toFixed(0)}ms total ${(performance.now() - t0).toFixed(0)}ms`,
+      );
+      return { content, metadata };
     }
+
+    const tCtx = performance.now();
+    const walletContext = await this.buildWalletContext(payload.accountId, payload.pendingProposalsSummary);
+    console.info(`[assistant] build context ${(performance.now() - tCtx).toFixed(0)}ms`);
+    const model = modelRuntimeService.getModelOrThrow();
     const content = await assistantInferenceService.generateReply({
       model,
       messages: payload.messages,
@@ -443,7 +476,8 @@ export class AiModelMainService {
       personalityId: payload.personalityId,
       walletContext,
     });
-    return { content, metadata };
+    console.info(`[assistant] llm duration total ${(performance.now() - t0).toFixed(0)}ms`);
+    return { content, metadata: null };
   }
 }
 

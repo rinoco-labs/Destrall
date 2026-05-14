@@ -132,7 +132,7 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
   }
 
   if (
-    /\b(best\s+yield|where\s+should\s+i\s+put|where\s+to\s+put\s+funds?\s+for\s+yield|safest\s+yield|max(?:imum)?\s+yield)\b/i.test(
+    /\b(best\s+yield|where\s+should\s+i\s+put|where\s+to\s+put\s+funds?\s+for\s+yield|safest\s+yield|max(?:imum)?\s+yield|maxim(?:ize|ise)\s+(?:my\s+)?yield)\b/i.test(
       lower,
     )
   ) {
@@ -144,7 +144,7 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
 
   /** Navi / yield pool discovery (must stay ahead of generic “navi” fallback). */
   const asksYieldPools =
-    /\b(what\s+yield\s+pools|yield\s+pools\s+available|available\s+yield\s+pools|available\s+yield\s+options?|what\s+are\s+the\s+available\s+yield|what\s+yield\s+(?:options?|pools|opportunities)\s+(?:are\s+)?(?:available|on\s+navi)|what\s+yield\s+is\s+available|show\s+(?:me\s+)?(?:available\s+)?yield|list\s+(?:me\s+)?(?:available\s+)?yield|yield\s+options?\s+on\s+navi|yield\s+on\s+navi|show\s+(?:me\s+)?navi\s+pools?|navi\s+pools?|navi\s+yield|yield\s+from\s+navi|navi\s+(?:lending|lend|supply|apy)|what\s+apys?\s+(?:on\s+)?navi|what\s+pools?\s+(?:on\s+)?navi|what\s+apy\s+can\s+i\s+get|apy\s+can\s+i\s+get|how\s+much\s+apy|navi\s+protocol\s+yield)\b/i.test(
+    /\b(what\s+yield\s+pools|yield\s+pools\s+available|available\s+yield\s+pools|available\s+yield\s+options?|what\s+are\s+the\s+available\s+yield|what\s+yield\s+(?:options?|pools|opportunities)\s+(?:are\s+)?(?:available|on\s+navi)|what\s+yield\s+is\s+available|show\s+(?:me\s+)?(?:available\s+)?yield|list\s+(?:me\s+)?(?:available\s+)?yield|yield\s+options?\s+on\s+navi|yield\s+on\s+navi|show\s+(?:me\s+)?(?:the\s+)?navi\s+pools?|navi\s+pools?|navi\s+yield|yield\s+from\s+navi|navi\s+(?:lending|lend|supply|apy)|what\s+apys?\s+(?:on\s+)?navi|what\s+pools?\s+(?:on\s+)?navi|what\s+apy\s+can\s+i\s+get|apy\s+can\s+i\s+get|how\s+much\s+apy|navi\s+protocol\s+yield)\b/i.test(
       lower,
     ) ||
     (/\bnavi\b/i.test(lower) &&

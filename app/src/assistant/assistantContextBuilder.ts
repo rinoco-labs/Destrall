@@ -1,67 +1,11 @@
-import { chainFacadeService } from "../main/services/chains/chainFacadeService";
-import { walletService } from "../main/wallet/walletService";
-import { actionRegistry } from "../packages/runtime/actionRegistry";
-import { contactRepository } from "../main/persistence/repositories/contactRepository";
-import { assistantToolDefinitionsForModel } from "./assistantFunctionSchemas";
+import { buildCompactAssistantContext, type CompactContextOptions } from "./contextBuilder";
 
-function contactInScope(accountId: string, row: { accountId: string | null; chain: string }): boolean {
-  if (row.chain !== "sui") return false;
-  if (row.accountId != null && row.accountId !== accountId) return false;
-  return true;
-}
+export type AssistantContextBuildOptions = CompactContextOptions;
 
-/**
- * Non-secret assistant context: balances, contacts summary, tool schemas, network.
- */
-export async function buildAssistantContextDocument(accountId: string): Promise<string> {
-  const base = await chainFacadeService.buildAssistantWalletContext(accountId);
-  const lines: string[] = [base];
-
-  const account = walletService.getWalletAccount(accountId);
-  if (account) {
-    const others = walletService
-      .getStatus()
-      .accounts.filter((a) => a.chain === "sui" && a.id !== accountId)
-      .map((a) => `- ${a.name}: ${a.address}`)
-      .slice(0, 12);
-    if (others.length) {
-      lines.push("Other Sui accounts in this wallet (for “my other wallet” sends):");
-      lines.push(...others);
-    }
-  }
-
-  const contacts = contactRepository
-    .list()
-    .filter((c) => contactInScope(accountId, c))
-    .slice(0, 30)
-    .map((c) => `- ${c.name} → ${c.address}`);
-  if (contacts.length) {
-    lines.push("Contacts (Sui, scoped to this account):");
-    lines.push(...contacts);
-  } else {
-    lines.push("Contacts: none stored for this scope.");
-  }
-
-  lines.push("Security: the assistant cannot sign transactions or see your seed phrase or private keys.");
-  lines.push("Available deterministic tools (names must match exactly):");
-  for (const t of assistantToolDefinitionsForModel) {
-    lines.push(`- ${t.name}: ${t.description}`);
-  }
-
-  const descriptors = actionRegistry.listForAssistant();
-  if (descriptors.length) {
-    lines.push("Registered package actions (transfers and swaps are prepare-first; user must approve cards to execute):");
-    for (const d of descriptors) {
-      lines.push(`- ${d.namespacedName}: ${d.description}`);
-    }
-  }
-
-  lines.push(
-    "Risk settings: treat every send as irreversible; verify the full recipient address before approving.",
-  );
-  lines.push(
-    "Yield risk profile (optional): set app_settings key assistant_yield_risk_tolerance to conservative | balanced | aggressive to tune pool ordering hints.",
-  );
-
-  return lines.filter(Boolean).join("\n");
+/** @deprecated Prefer `buildCompactAssistantContext` from `./contextBuilder`. */
+export async function buildAssistantContextDocument(
+  accountId: string,
+  options?: AssistantContextBuildOptions,
+): Promise<string> {
+  return buildCompactAssistantContext(accountId, options);
 }

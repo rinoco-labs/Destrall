@@ -17,6 +17,7 @@ import {
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { isDestrallDesktop } from "@/lib/desktopWallet";
+import { formatPendingProposalsForContext } from "../../assistant/pendingProposalsContext";
 
 function titleFromUserMessage(text: string, maxWords = 6): string {
   const words = text
@@ -316,12 +317,14 @@ export const useAssistantChatStore = create<AssistantChatStoreState>((set, get) 
 
       const language = useSettingsStore.getState().language;
       const personalityId = useSettingsStore.getState().aiPersonality;
+      const pendingProposalsSummary = formatPendingProposalsForContext(rows);
 
       const reply = await useAiModelStore.getState().sendMessage({
         messages: turns,
         accountId,
         language,
         personalityId,
+        pendingProposalsSummary,
       });
 
       await desktopAssistantChatAddMessage({
