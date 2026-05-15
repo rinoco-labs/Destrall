@@ -35,6 +35,7 @@ Large embeddings or model weights **do not** belong in SQLite.
 
 - A scheduled or on-demand **summary** of wallet-relevant signals (balances, recent txs, package-surfaced insights).
 - Generated with **local** context providers; **no cloud-hosted AI dependency** in v1 scope.
+- Renderer-side assembly lives in **`app/src/services/daily-brief/`** (`loadDailyBrief`, deterministic builders for market/risk/opportunities, and **stale-while-revalidate** caching in `daily-brief-cache.ts`). Navi pools, positions, and the stored yield risk profile are read via **`chain:get-daily-brief-bundle`** (main uses `assistantDataCache`). The latest brief snapshot is pushed to main for assistant context through **`chain:publish-daily-brief-memory`** and `dailyBriefAssistantMemoryLines` in **`app/src/main/services/dailyBriefMemoryService.ts`** (surfaced in `contextBuilder.ts`).
 
 ## Wallet-Aware Assistant Context
 
@@ -44,7 +45,7 @@ Context builders attach **non-secret** or **explicitly approved** snapshots to t
 - User-approved package read results.
 - **Never** attach private keys, seed phrases, or raw signing material.
 
-**System prompt (single source of truth):** assistant identity, safety rules, and finance-copilot behavior live in `app/src/assistant/systemPrompt.ts` (`buildDestrallAssistantSystemPrompt`). Runtime context assembly is **`app/src/assistant/contextBuilder.ts`** (`buildCompactAssistantContext`) using **`app/src/assistant/cache/assistantDataCache.ts`** (TTL + stale-while-revalidate for balances, activity, Navi pools, positions). Deterministic routing (cards first, optional LLM skip) lives in **`app/src/assistant/intentPlanner.ts`** (`planAssistantStructuredTurn`). Portfolio heuristics remain in `app/src/assistant/recommendationEngine.ts` / `portfolio-analysis.service.ts` — avoid duplicating long prompt text elsewhere.
+**System prompt (single source of truth):** assistant identity, safety rules, and finance-copilot behavior live in `app/src/assistant/systemPrompt.ts` (`buildDestrallAssistantSystemPrompt`). Runtime context assembly is **`app/src/assistant/contextBuilder.ts`** (`buildCompactAssistantContext`) using **`app/src/assistant/cache/assistantDataCache.ts`** (TTL + stale-while-revalidate for balances, activity, Navi pools, positions). Deterministic routing (cards first, optional LLM skip) lives in **`app/src/assistant/intentPlanner.ts`** (`planAssistantStructuredTurn`). Short-lived follow-up hints (e.g. last mentioned pool for “deposit into that pool”) use **`app/src/assistant/conversationContextStore.ts`** (per account + chat, in-memory). Portfolio heuristics remain in `app/src/assistant/recommendationEngine.ts` / `portfolio-analysis.service.ts` — avoid duplicating long prompt text elsewhere.
 
 ## Context Providers
 
