@@ -6,6 +6,9 @@ import { registerChainIpcHandlers } from "./main/ipc/registerChainIpcHandlers";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
+import { registerTriggersIpcHandlers } from "./main/ipc/registerTriggersIpcHandlers";
+import { startTriggerScheduler } from "./packages/core/triggers/triggerScheduler";
+import { timezoneSettingsService } from "./services/time/timezone.service";
 import { aiModelMainService } from "./main/ai/aiModelMainService";
 import { registerCorePackages } from "./packages/runtime/registerCorePackages";
 
@@ -35,11 +38,14 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   getDatabase();
+  timezoneSettingsService.initialize();
   registerCorePackages();
   registerChainIpcHandlers();
   registerWalletIpcHandlers();
   registerAiModelIpcHandlers();
   registerAssistantChatIpcHandlers();
+  registerTriggersIpcHandlers();
+  startTriggerScheduler();
   void aiModelMainService.restoreFromPersistence().catch((err) => {
     console.error("[llm] Startup restore failed", err);
   });

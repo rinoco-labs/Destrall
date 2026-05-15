@@ -2,7 +2,13 @@ import type { NaviPoolRow } from "../packages/core/yield/navi/navi.types";
 import type { SwapProposalSnapshotV1 } from "../packages/core/swap/swap.types";
 import type { NaviYieldProposalSnapshotV1 } from "../packages/core/yield/navi/navi.types";
 
-export type PendingClarificationKind = "rebalance_distribution" | null;
+export type PendingClarificationKind = "rebalance_distribution" | "schedule_ampm" | null;
+
+export type PendingScheduleClarification = {
+  partialHour: number;
+  dateLabel: string;
+  originalText: string;
+};
 
 export type ParsedRebalanceTarget = { symbol: string; pct: number };
 
@@ -16,6 +22,7 @@ export type ConversationTurnContext = {
   lastSwapQuoteSummary?: string;
   lastActionProposalSummary?: string;
   pendingClarification?: PendingClarificationKind;
+  pendingSchedule?: PendingScheduleClarification;
   parsedRebalanceTargets?: ParsedRebalanceTarget[];
   recentUserIntent?: string;
   /** After a staged swap+deposit plan, user can say “deposit now”. */

@@ -6,6 +6,8 @@ import type {
   SwapProposalResult,
   NaviDepositProposalResult,
   NaviWithdrawProposalResult,
+  TriggerProposalResult,
+  TriggerListResult,
 } from "../../../assistant/assistantResultTypes";
 import { isProposalStructuredResult } from "../../../assistant/assistantResultTypes";
 import {
@@ -27,7 +29,14 @@ import {
   desktopAssistantChatAddMessage,
   desktopAssistantResolveContactDisambiguation,
 } from "@/lib/desktopAssistantChat";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Users, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  desktopTriggersApprove,
+  desktopTriggersDelete,
+  desktopTriggersPause,
+  desktopTriggersResume,
+} from "@/lib/desktopTriggers";
 
 function proposalToActionMessage(
   messageId: string,
@@ -351,12 +360,20 @@ export function AssistantStructuredMessageRenderer({
             chatId={chatId}
             messageId={messageId}
             block={b}
+            meta={meta}
+            onUpdateMessage={onUpdateMessage}
             onApprove={() => {
               if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
                 void handleApprove(b.swapProposal);
                 return;
               }
-              if (isProposalStructuredResult(b) && b.status === "pending") void handleApprove(b);
+              if (
+                isProposalStructuredResult(b) &&
+                b.type !== "trigger_proposal" &&
+                b.status === "pending"
+              ) {
+                void handleApprove(b);
+              }
             }}
             onReject={() => {
               if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
@@ -456,6 +473,8 @@ function StructuredBlockView({
   chatId,
   messageId,
   block,
+  meta,
+  onUpdateMessage,
   onApprove,
   onReject,
   onReloadThread,
@@ -464,6 +483,8 @@ function StructuredBlockView({
   chatId: string;
   messageId: string;
   block: AssistantStructuredResult;
+  meta: string | null;
+  onUpdateMessage: (metadata: string) => Promise<void>;
   onApprove: () => void;
   onReject: () => void;
   onReloadThread: () => Promise<void>;
@@ -659,6 +680,34 @@ function StructuredBlockView({
           explorerUrl={block.explorerUrl}
         />
       );
+    case "trigger_proposal":
+      return (
+        <TriggerProposalCard
+          accountId={accountId}
+          block={block}
+          meta={meta}
+          onUpdateMessage={onUpdateMessage}
+          onReloadThread={onReloadThread}
+        />
+      );
+    case "trigger_list":
+      return (
+        <TriggerListCard
+          accountId={accountId}
+          block={block}
+          onReloadThread={onReloadThread}
+        />
+      );
+    case "time_info":
+      return (
+        <div className="rounded-2xl border border-border bg-card/60 p-4 max-w-sm text-sm space-y-1">
+          <p className="text-[10px] font-bold tracking-[0.18em] text-muted-foreground uppercase">Current time</p>
+          <p className="font-medium">{block.formatted}</p>
+          <p className="text-xs text-muted-foreground">
+            {block.weekday} · {block.utcOffset}
+          </p>
+        </div>
+      );
     case "error":
       return <StructuredErrorBubble message={block.message} />;
     default:
@@ -666,4 +715,179 @@ function StructuredBlockView({
         <StructuredErrorBubble message="Unsupported structured assistant payload." />
       );
   }
+}
+
+function TriggerProposalCard({
+  accountId,
+  block,
+  meta,
+  onUpdateMessage,
+  onReloadThread,
+}: {
+  accountId: string;
+  block: TriggerProposalResult;
+  meta: string | null;
+  onUpdateMessage: (metadata: string) => Promise<void>;
+  onReloadThread: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const snap = block.proposalSnapshot;
+
+  const patch = async (p: Record<string, unknown>) => {
+    await onUpdateMessage(patchStructuredProposal(meta, block.proposalId, p));
+    await onReloadThread();
+  };
+
+  return (
+    <div className="rounded-2xl border border-amber-500/40 bg-card/60 p-4 max-w-md space-y-3 text-sm">
+      <div className="flex items-center gap-2">
+        <Zap className="w-4 h-4 text-amber-500" />
+        <p className="text-[10px] font-bold tracking-[0.18em] text-amber-600 uppercase">Trigger review</p>
+      </div>
+      <p className="font-semibold">{block.name}</p>
+      <dl className="text-xs space-y-1">
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Condition</dt>
+          <dd className="text-right">{block.conditionSummary}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Action</dt>
+          <dd className="text-right">{block.actionSummary}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Account</dt>
+          <dd>{block.accountLabel}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Network</dt>
+          <dd>{block.network}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Max runs</dt>
+          <dd>{block.maxExecutionsLabel}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Slippage cap</dt>
+          <dd>{block.slippageBps} bps</dd>
+        </div>
+        {(block.scheduleDisplay || block.scheduleLabel) && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Time</dt>
+            <dd className="text-right">{block.scheduleDisplay ?? block.scheduleLabel}</dd>
+          </div>
+        )}
+        {block.nextExecutionLabel && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Next run</dt>
+            <dd className="text-right">{block.nextExecutionLabel}</dd>
+          </div>
+        )}
+        {block.executionMode && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Execution</dt>
+            <dd>{block.executionMode === "one-time" ? "One-time" : "Recurring"}</dd>
+          </div>
+        )}
+      </dl>
+      <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+        {block.riskNotes.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+      {block.status === "pending" && (
+        <div className="flex gap-2 pt-1">
+          <Button
+            size="sm"
+            disabled={busy || !snap}
+            onClick={async () => {
+              if (!snap) return;
+              setBusy(true);
+              try {
+                await desktopTriggersApprove({ accountId, proposalSnapshot: snap });
+                await patch({ status: "approved" });
+              } catch (e) {
+                await patch({
+                  status: "rejected",
+                  errorMessage: e instanceof Error ? e.message : "Approval failed",
+                });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Approve Trigger"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void patch({ status: "rejected" })}>
+            Cancel
+          </Button>
+        </div>
+      )}
+      {block.status === "approved" && <p className="text-xs text-emerald-600">Trigger saved and active.</p>}
+    </div>
+  );
+}
+
+function TriggerListCard({
+  accountId,
+  block,
+  onReloadThread,
+}: {
+  accountId: string;
+  block: TriggerListResult;
+  onReloadThread: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card/60 p-4 max-w-md space-y-3 text-sm">
+      <p className="text-[10px] font-bold tracking-[0.18em] text-muted-foreground uppercase">Your triggers</p>
+      {block.triggers.length === 0 ? (
+        <p className="text-muted-foreground text-xs">No triggers for this account.</p>
+      ) : (
+        <ul className="space-y-2">
+          {block.triggers.map((t) => (
+            <li key={t.id} className="rounded-lg border border-border/60 p-3 space-y-1">
+              <p className="font-medium text-sm">{t.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {t.typeLabel} · {t.status}
+              </p>
+              <p className="text-xs">{t.conditionSummary}</p>
+              <p className="text-xs text-muted-foreground">{t.actionSummary}</p>
+              {t.nextCheckLabel ? (
+                <p className="text-xs text-muted-foreground">Next: {t.nextCheckLabel}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-1 pt-1">
+                {t.status === "active" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => void desktopTriggersPause(accountId, t.id).then(onReloadThread)}
+                  >
+                    Pause
+                  </Button>
+                )}
+                {t.status === "paused" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => void desktopTriggersResume(accountId, t.id).then(onReloadThread)}
+                  >
+                    Start
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-destructive"
+                  onClick={() => void desktopTriggersDelete(accountId, t.id).then(onReloadThread)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

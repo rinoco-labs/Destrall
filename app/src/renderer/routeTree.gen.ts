@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TriggersRouteImport } from './routes/triggers'
 import { Route as SendRouteImport } from './routes/send'
 import { Route as ReceiveRouteImport } from './routes/receive'
 import { Route as LockRouteImport } from './routes/lock'
@@ -31,6 +32,11 @@ const StoreRoute = StoreRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TriggersRoute = TriggersRouteImport.update({
+  id: '/triggers',
+  path: '/triggers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SendRoute = SendRouteImport.update({
@@ -101,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/receive': typeof ReceiveRoute
   '/send': typeof SendRoute
   '/settings': typeof SettingsRoute
+  '/triggers': typeof TriggersRoute
   '/store': typeof StoreRoute
   '/account/$accountId': typeof AccountAccountIdRoute
 }
@@ -116,6 +123,7 @@ export interface FileRoutesByTo {
   '/receive': typeof ReceiveRoute
   '/send': typeof SendRoute
   '/settings': typeof SettingsRoute
+  '/triggers': typeof TriggersRoute
   '/store': typeof StoreRoute
   '/account/$accountId': typeof AccountAccountIdRoute
 }
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/receive': typeof ReceiveRoute
   '/send': typeof SendRoute
   '/settings': typeof SettingsRoute
+  '/triggers': typeof TriggersRoute
   '/store': typeof StoreRoute
   '/account/$accountId': typeof AccountAccountIdRoute
 }
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/receive'
     | '/send'
     | '/settings'
+    | '/triggers'
     | '/store'
     | '/account/$accountId'
   fileRoutesByTo: FileRoutesByTo
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
     | '/receive'
     | '/send'
     | '/settings'
+    | '/triggers'
     | '/store'
     | '/account/$accountId'
   id:
@@ -179,6 +190,7 @@ export interface FileRouteTypes {
     | '/receive'
     | '/send'
     | '/settings'
+    | '/triggers'
     | '/store'
     | '/account/$accountId'
   fileRoutesById: FileRoutesById
@@ -195,6 +207,7 @@ export interface RootRouteChildren {
   ReceiveRoute: typeof ReceiveRoute
   SendRoute: typeof SendRoute
   SettingsRoute: typeof SettingsRoute
+  TriggersRoute: typeof TriggersRoute
   StoreRoute: typeof StoreRoute
   AccountAccountIdRoute: typeof AccountAccountIdRoute
 }
@@ -213,6 +226,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/triggers': {
+      id: '/triggers'
+      path: '/triggers'
+      fullPath: '/triggers'
+      preLoaderRoute: typeof TriggersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/send': {
@@ -307,6 +327,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReceiveRoute: ReceiveRoute,
   SendRoute: SendRoute,
   SettingsRoute: SettingsRoute,
+  TriggersRoute: TriggersRoute,
   StoreRoute: StoreRoute,
   AccountAccountIdRoute: AccountAccountIdRoute,
 }

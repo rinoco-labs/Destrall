@@ -135,6 +135,19 @@ const api: DestrallApi = {
       pickedMatchId: string;
     }) => ipcRenderer.invoke(IPCChannels.assistantChatResolveContactDisambiguation, payload),
   },
+  triggers: {
+    list: (accountId: string) => ipcRenderer.invoke(IPCChannels.triggersList, { accountId }),
+    approve: (payload: { accountId: string; proposalSnapshot: import("./packages/core/triggers/triggers.types").TriggerProposalSnapshotV1 }) =>
+      ipcRenderer.invoke(IPCChannels.triggersApprove, payload),
+    pause: (payload: { accountId: string; triggerId: string }) =>
+      ipcRenderer.invoke(IPCChannels.triggersPause, payload),
+    resume: (payload: { accountId: string; triggerId: string }) =>
+      ipcRenderer.invoke(IPCChannels.triggersResume, payload),
+    delete: (payload: { accountId: string; triggerId: string }) =>
+      ipcRenderer.invoke(IPCChannels.triggersDelete, payload),
+    executions: (payload: { accountId: string; triggerId: string }) =>
+      ipcRenderer.invoke(IPCChannels.triggersExecutions, payload),
+  },
 };
 
 contextBridge.exposeInMainWorld("destrallApi", api);

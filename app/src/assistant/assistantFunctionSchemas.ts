@@ -25,6 +25,14 @@ export const SWAP_THEN_DEPOSIT_ACTION_NAME = "core.composite.swap_then_deposit";
 
 export const PREPARE_REBALANCE_ACTION_NAME = "core.rebalance.prepare_rebalance";
 
+export const CREATE_TRIGGER_ACTION_NAME = "core.triggers.create_trigger";
+export const LIST_TRIGGERS_ACTION_NAME = "core.triggers.list_triggers";
+export const PAUSE_TRIGGER_ACTION_NAME = "core.triggers.pause_trigger";
+export const RESUME_TRIGGER_ACTION_NAME = "core.triggers.resume_trigger";
+export const DELETE_TRIGGER_ACTION_NAME = "core.triggers.delete_trigger";
+
+export const GET_CURRENT_TIME_ACTION_NAME = "core.time.get_current_time";
+
 export const prepareSendFunctionSchema = {
   name: PREPARE_SEND_ACTION_NAME,
   description:
@@ -196,6 +204,29 @@ export const swapThenDepositFunctionSchema = {
   },
 } as const;
 
+export const createTriggerFunctionSchema = {
+  name: CREATE_TRIGGER_ACTION_NAME,
+  description:
+    "Prepare an automation trigger for explicit user pre-approval. Never saves or executes silently. Price and schedule triggers only within declared limits.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      naturalLanguage: {
+        type: "string",
+        description: "User description of the trigger, e.g. sell 10 SUI if SUI goes above $5.",
+      },
+    },
+    required: ["naturalLanguage"],
+  },
+} as const;
+
+export const listTriggersFunctionSchema = {
+  name: LIST_TRIGGERS_ACTION_NAME,
+  description: "List the user's automation triggers for the active account.",
+  parameters: { type: "object", additionalProperties: false, properties: {}, required: [] },
+} as const;
+
 export const assistantToolDefinitionsForModel = [
   prepareSendFunctionSchema,
   listSwappableTokensFunctionSchema,
@@ -206,4 +237,11 @@ export const assistantToolDefinitionsForModel = [
   prepareYieldWithdrawFunctionSchema,
   swapThenDepositFunctionSchema,
   prepareRebalanceFunctionSchema,
+  createTriggerFunctionSchema,
+  listTriggersFunctionSchema,
+  {
+    name: GET_CURRENT_TIME_ACTION_NAME,
+    description: "Return the user's current local time, timezone, and UTC time.",
+    parameters: { type: "object", additionalProperties: false, properties: {}, required: [] },
+  },
 ];

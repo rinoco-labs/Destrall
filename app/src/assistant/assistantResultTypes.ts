@@ -6,6 +6,7 @@
 import type { SendProposalSnapshot } from "../packages/runtime/transactionProposalTypes";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import type { TriggerProposalSnapshotV1, TriggerCategory, TriggerStatus } from "@packages/core/triggers/triggers.types";
 
 export type AssistantAssetFlow = {
   direction: "out" | "in";
@@ -215,6 +216,58 @@ export type TransactionResultResult = {
   summary: string;
 };
 
+export type TriggerProposalResult = {
+  type: "trigger_proposal";
+  proposalId: string;
+  status: "pending" | "approved" | "rejected";
+  proposalSnapshot?: TriggerProposalSnapshotV1;
+  name: string;
+  triggerType: TriggerCategory;
+  conditionSummary: string;
+  actionSummary: string;
+  accountLabel: string;
+  network: string;
+  maxExecutionsLabel: string;
+  slippageBps: number;
+  scheduleLabel?: string;
+  /** Readable: May 15 • 6:00 AM • Asia/Ho_Chi_Minh */
+  scheduleDisplay?: string;
+  nextExecutionLabel?: string;
+  executionMode?: "one-time" | "recurring";
+  timezone: string;
+  localTimeNow: string;
+  riskNotes: string[];
+  card: AssistantProposalCard;
+};
+
+export type TimeInfoResult = {
+  type: "time_info";
+  localTime: string;
+  timezone: string;
+  utcTime: string;
+  formatted: string;
+  weekday: string;
+  utcOffset: string;
+};
+
+export type TriggerListResult = {
+  type: "trigger_list";
+  triggers: Array<{
+    id: string;
+    name: string;
+    type: TriggerCategory;
+    typeLabel: string;
+    status: TriggerStatus;
+    conditionSummary: string;
+    actionSummary: string;
+    nextCheckAt: string | null;
+    nextCheckLabel?: string | null;
+    lastTriggeredAt: string | null;
+    executionCount: number;
+    maxExecutions: number | null;
+  }>;
+};
+
 export type AssistantErrorResult = {
   type: "error";
   message: string;
@@ -237,6 +290,9 @@ export type AssistantStructuredResult =
   | TransactionResultResult
   | SwapExecutionResultResult
   | YieldExecutionResultResult
+  | TriggerProposalResult
+  | TriggerListResult
+  | TimeInfoResult
   | AssistantErrorResult;
 
 export type AssistantMessageMetadataV1 = {
@@ -250,11 +306,13 @@ export function isProposalStructuredResult(
   | SendProposalResult
   | SwapProposalResult
   | NaviDepositProposalResult
-  | NaviWithdrawProposalResult {
+  | NaviWithdrawProposalResult
+  | TriggerProposalResult {
   return (
     r.type === "send_proposal" ||
     r.type === "swap_proposal" ||
     r.type === "navi_deposit_proposal" ||
-    r.type === "navi_withdraw_proposal"
+    r.type === "navi_withdraw_proposal" ||
+    r.type === "trigger_proposal"
   );
 }

@@ -35,6 +35,13 @@ const migrations: Migration[] = [
       ensureContactsTable(db);
     },
   },
+  {
+    version: 5,
+    name: "triggers",
+    up: (db) => {
+      ensureTriggerTables(db);
+    },
+  },
 ];
 
 export function ensureAssistantChatTables(db: DatabaseSync) {
@@ -310,4 +317,48 @@ export function runMigrations(db: DatabaseSync) {
   ensureLlmModelTables(db);
   ensureAssistantChatTables(db);
   ensureContactsTable(db);
+  ensureTriggerTables(db);
+}
+
+export function ensureTriggerTables(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS triggers (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      network TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      condition_json TEXT NOT NULL,
+      action_json TEXT NOT NULL,
+      approval_json TEXT NOT NULL,
+      schedule_json TEXT,
+      last_checked_at TEXT,
+      last_triggered_at TEXT,
+      next_check_at TEXT,
+      execution_count INTEGER NOT NULL DEFAULT 0,
+      max_executions INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS trigger_executions (
+      id TEXT PRIMARY KEY,
+      trigger_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      condition_snapshot_json TEXT NOT NULL,
+      action_snapshot_json TEXT NOT NULL,
+      tx_digest TEXT,
+      error TEXT,
+      executed_at TEXT NOT NULL,
+      FOREIGN KEY (trigger_id) REFERENCES triggers(id) ON DELETE CASCADE
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_triggers_account_id ON triggers(account_id);
+    CREATE INDEX IF NOT EXISTS idx_triggers_status ON triggers(status);
+    CREATE INDEX IF NOT EXISTS idx_triggers_next_check_at ON triggers(next_check_at);
+    CREATE INDEX IF NOT EXISTS idx_trigger_executions_trigger_id ON trigger_executions(trigger_id);
+    CREATE INDEX IF NOT EXISTS idx_trigger_executions_account_id ON trigger_executions(account_id);
+  `);
 }

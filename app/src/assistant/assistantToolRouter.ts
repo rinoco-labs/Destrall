@@ -6,7 +6,18 @@ import {
   GET_YIELD_POSITIONS_ACTION_NAME,
   PREPARE_YIELD_DEPOSIT_ACTION_NAME,
   PREPARE_YIELD_WITHDRAW_ACTION_NAME,
+  CREATE_TRIGGER_ACTION_NAME,
+  LIST_TRIGGERS_ACTION_NAME,
+  PAUSE_TRIGGER_ACTION_NAME,
+  RESUME_TRIGGER_ACTION_NAME,
+  DELETE_TRIGGER_ACTION_NAME,
 } from "./assistantFunctionSchemas";
+import {
+  isTriggerManagementCommand,
+  parseTriggerFromText,
+  parseTriggerManagementCommand,
+} from "../packages/core/triggers/triggerParser";
+import { hasScheduleIntent } from "../packages/core/triggers/scheduledTriggerParser";
 
 export type RoutedAssistantToolCall = {
   namespacedName: string;
@@ -67,6 +78,46 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
   const text = normalizeUserText(userText);
   const lower = text.toLowerCase();
 
+  if (isTriggerManagementCommand(text)) {
+    const mgmt = parseTriggerManagementCommand(text);
+    if (mgmt?.action === "list") {
+      return { namespacedName: LIST_TRIGGERS_ACTION_NAME, input: {} };
+    }
+    if (mgmt?.action === "pause") {
+      return { namespacedName: PAUSE_TRIGGER_ACTION_NAME, input: { nameHint: mgmt.nameHint } };
+    }
+    if (mgmt?.action === "resume") {
+      return { namespacedName: RESUME_TRIGGER_ACTION_NAME, input: { nameHint: mgmt.nameHint } };
+    }
+    if (mgmt?.action === "delete") {
+      return { namespacedName: DELETE_TRIGGER_ACTION_NAME, input: { nameHint: mgmt.nameHint } };
+    }
+  }
+
+  if (
+    hasScheduleIntent(text) ||
+    (/\b(?:if|when)\b/i.test(text) &&
+      (/\b(?:above|below|goes?\s+(?:up|down)|price|trigger)\b/i.test(lower) ||
+        /\b(?:every\s+day|daily|collect\s+(?:my\s+)?yield)\b/i.test(lower))) ||
+    /\b(?:create|set\s+up|make)\s+(?:a\s+)?trigger\b/i.test(lower)
+  ) {
+    const parsed = parseTriggerFromText(text);
+    if (parsed.ok) {
+      return { namespacedName: CREATE_TRIGGER_ACTION_NAME, input: { naturalLanguage: text } };
+    }
+  }
+
+  const swapTrade = text.match(
+    /\b(?:swap|convert|trade)\s+([\d.,]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)\b/i,
+  );
+  if (swapTrade && !hasScheduleIntent(text)) {
+    const [, amt, from, to] = swapTrade;
+    return {
+      namespacedName: PREPARE_SWAP_ACTION_NAME,
+      input: { fromToken: from, toToken: to, amount: amt },
+    };
+  }
+
   const sendTo = text.match(/\b(?:send|transfer)\s+([\d.,]+)\s+(\w+)\s+to\s+(.+)/i);
   if (sendTo) {
     const [, amt, sym, destRaw] = sendTo;
@@ -117,17 +168,6 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
     return {
       namespacedName: LIST_SWAPPABLE_TOKENS_ACTION_NAME,
       input: q ? { query: q } : {},
-    };
-  }
-
-  const swapTrade = text.match(
-    /\b(?:swap|convert|trade)\s+([\d.,]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)\b/i,
-  );
-  if (swapTrade) {
-    const [, amt, from, to] = swapTrade;
-    return {
-      namespacedName: PREPARE_SWAP_ACTION_NAME,
-      input: { fromToken: from, toToken: to, amount: amt },
     };
   }
 

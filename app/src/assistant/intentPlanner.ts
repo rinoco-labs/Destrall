@@ -28,6 +28,14 @@ import {
   clearConversationField,
 } from "./conversationContextStore";
 import { parseRebalanceTargets } from "../packages/core/rebalance/rebalancePlanner";
+import {
+  CREATE_TRIGGER_ACTION_NAME,
+  GET_CURRENT_TIME_ACTION_NAME,
+  LIST_TRIGGERS_ACTION_NAME,
+} from "./assistantFunctionSchemas";
+import { triggerStorageService } from "../packages/core/triggers/triggerStorageService";
+import { timezoneSettingsService } from "../services/time/timezone.service";
+import { hasScheduleIntent } from "../packages/core/triggers/scheduledTriggerParser";
 
 function normalizeUserText(s: string): string {
   return s.trim().replace(/\s+/g, " ");
@@ -78,6 +86,18 @@ function isActivityQuestion(lower: string): boolean {
   return /\b(show\s+)?(my\s+)?(recent\s+)?(activity|transactions|txs?|history)\b/.test(lower);
 }
 
+function isTimeQuestion(lower: string): boolean {
+  return (
+    /\b(what\s+time\s+is\s+it|what'?s?\s+the\s+current\s+time|what\s+time\s+is\s+it\s+now|tell\s+me\s+the\s+time)\b/.test(
+      lower,
+    ) || /\b(what\s+timezone\s+am\s+i\s+in|what\s+time\s+zone|my\s+timezone)\b/.test(lower)
+  );
+}
+
+function isTriggersTodayQuestion(lower: string): boolean {
+  return /\b(?:what\s+)?triggers?\s+(?:are\s+)?(?:scheduled|due)\s+today\b/.test(lower);
+}
+
 function isLooseRebalanceAsk(lower: string): boolean {
   if (/\d+\s*%/.test(lower)) return false;
   return /\b(rebalance\s+my\s+portfolio|rebalance|adjust\s+my\s+allocation)\b/.test(lower);
@@ -115,6 +135,17 @@ function captionForBlocks(
     case "navi_deposit_proposal":
     case "navi_withdraw_proposal":
       return "Prepared transaction — review the proposal card and approve only if details look correct.";
+    case "trigger_proposal": {
+      const when = head.nextExecutionLabel ?? head.scheduleDisplay ?? head.scheduleLabel;
+      if (when) {
+        return `Scheduled automation is on the card (${when}). Tap Approve Trigger to save — nothing runs until you pre-approve.`;
+      }
+      return "Automation trigger ready — review the card and tap Approve Trigger to save. Nothing runs until you pre-approve.";
+    }
+    case "trigger_list":
+      return `You have ${head.triggers.length} trigger(s) on the card — pause, resume, or delete from there.`;
+    case "time_info":
+      return `It's ${head.formatted} (${head.weekday}).`;
     case "contact_disambiguation":
       return "Pick the intended recipient on the card to continue.";
     case "transaction_result":
@@ -164,14 +195,14 @@ export async function planAssistantStructuredTurn(
   const networkLabel = env.charAt(0).toUpperCase() + env.slice(1);
 
   const swapGap = classifySwapUserMessage(text);
-  if (swapGap === "missing_to") {
+  if (!hasScheduleIntent(text) && swapGap === "missing_to") {
     return {
       mode: "deterministic",
       blocks: [{ type: "error", message: "What token do you want to receive?", code: "swap_incomplete" }],
       caption: "What token do you want to receive?",
     };
   }
-  if (swapGap === "missing_amount" || swapGap === "incomplete") {
+  if (!hasScheduleIntent(text) && (swapGap === "missing_amount" || swapGap === "incomplete")) {
     return {
       mode: "deterministic",
       blocks: [
@@ -192,6 +223,106 @@ export async function planAssistantStructuredTurn(
         blocks: [],
         caption:
           "Use Approve or Dismiss on the proposal card in this chat — I cannot submit transactions from text alone.",
+      };
+    }
+  }
+
+  if (convo.pendingClarification === "schedule_ampm" && convo.pendingSchedule) {
+    const pending = convo.pendingSchedule;
+    const am = /\b(am|a\.m\.|morning)\b/i.test(lower);
+    const pm = /\b(pm|p\.m\.|evening|night)\b/i.test(lower);
+    if (am || pm) {
+      const suffix = am ? " am" : " pm";
+      const merged = `${pending.originalText} ${pending.dateLabel} at ${pending.partialHour}${suffix}`;
+      clearConversationField(accountId, chatId, "pendingClarification");
+      clearConversationField(accountId, chatId, "pendingSchedule");
+      try {
+        const blocks = await executePackageAction({
+          accountId,
+          namespacedName: CREATE_TRIGGER_ACTION_NAME,
+          input: { naturalLanguage: merged },
+        });
+        const cap = captionForBlocks(blocks, { network: networkLabel, riskProfile });
+        if (blocks[0]?.type === "trigger_proposal") {
+          return {
+            mode: "deterministic",
+            blocks,
+            caption: cap.includes("card")
+              ? cap
+              : `Scheduled trigger ready — review the card and approve. It will run at the time you specified in your timezone.`,
+          };
+        }
+        return { mode: "deterministic", blocks, caption: cap };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not build scheduled trigger.";
+        return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: msg };
+      }
+    }
+    return {
+      mode: "deterministic",
+      blocks: [],
+      caption: `Do you mean ${pending.partialHour} AM or ${pending.partialHour} PM ${pending.dateLabel}?`,
+    };
+  }
+
+  if (isTimeQuestion(lower)) {
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: GET_CURRENT_TIME_ACTION_NAME,
+        input: {},
+      });
+      return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not read time.";
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: msg };
+    }
+  }
+
+  if (isTriggersTodayQuestion(lower)) {
+    const rows = triggerStorageService.list(accountId).filter((t) => t.status === "active" && t.nextCheckAt);
+    const todayParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezoneSettingsService.getTimezone(),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const tz = timezoneSettingsService.getTimezone();
+    const todayRows = rows.filter((r) => {
+      if (!r.nextCheckAt) return false;
+      let rowTz = tz;
+      if (r.scheduleJson) {
+        try {
+          const s = JSON.parse(r.scheduleJson) as { timezone?: string };
+          if (s.timezone) rowTz = s.timezone;
+        } catch {
+          /* keep default */
+        }
+      }
+      const d = new Intl.DateTimeFormat("en-CA", {
+        timeZone: rowTz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(r.nextCheckAt));
+      return d === todayParts;
+    });
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: LIST_TRIGGERS_ACTION_NAME,
+        input: {},
+      });
+      const caption =
+        todayRows.length > 0
+          ? `You have ${todayRows.length} active trigger(s) with a next check today (see list on the card).`
+          : "No active triggers are scheduled to check today for this account.";
+      return { mode: "deterministic", blocks, caption };
+    } catch {
+      return {
+        mode: "deterministic",
+        blocks: [],
+        caption: "Could not load triggers.",
       };
     }
   }
@@ -345,7 +476,28 @@ export async function planAssistantStructuredTurn(
             "\n\n[A staged swap→deposit card is shown. Note only the swap is executable first; deposit is estimated after the swap.]";
         } else if (t === "rebalance_proposal") {
           systemAddendum = "\n\n[A rebalance plan card is shown. Summarize briefly; swaps are not executed automatically.]";
+        } else if (t === "trigger_proposal") {
+          systemAddendum =
+            "\n\n[A scheduled automation trigger card is shown. State when it runs in the user's local timezone; they must Approve Trigger before anything is saved.]";
+        } else if (t === "time_info") {
+          systemAddendum = "";
         }
+      }
+
+      if (
+        routed.namespacedName === CREATE_TRIGGER_ACTION_NAME &&
+        blocks[0]?.type === "error" &&
+        /am or pm/i.test(blocks[0].message)
+      ) {
+        const amb = text.match(/\b(?:tomorrow|today)\s+at\s+(\d{1,2})\b/i);
+        setConversationContext(accountId, chatId, {
+          pendingClarification: "schedule_ampm",
+          pendingSchedule: {
+            partialHour: amb ? parseInt(amb[1], 10) : 8,
+            dateLabel: /\btomorrow\b/i.test(text) ? "tomorrow" : "today",
+            originalText: text.replace(/\b(?:tomorrow|today)\s+at\s+\d{1,2}\b/i, "").trim(),
+          },
+        });
       }
 
       if (shouldUseDeterministicAssistantReply(blocks)) {

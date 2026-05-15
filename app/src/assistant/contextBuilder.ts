@@ -10,6 +10,8 @@ import { analyzePortfolio } from "./portfolio-analysis.service";
 import { buildPortfolioRecommendationDigest } from "./recommendationEngine";
 import { behaviorMemoryLines } from "./behaviorMemoryStore";
 import { dailyBriefAssistantMemoryLines } from "../main/services/dailyBriefMemoryService";
+import { buildAssistantTimeContextBlock } from "../services/time/time.service";
+import { triggerStorageService } from "../packages/core/triggers/triggerStorageService";
 
 function contactInScope(accountId: string, row: { accountId: string | null; chain: string }): boolean {
   if (row.chain !== "sui") return false;
@@ -40,6 +42,7 @@ export async function buildCompactAssistantContext(
 
   lines.push(`ACTIVE: ${account.name} | ${account.id} | ${account.address}`);
   lines.push(`NETWORK: ${net.activeEnvironment} (${net.chainIdLabel})`);
+  lines.push(buildAssistantTimeContextBlock());
 
   if (account.chain === "sui") {
     const balances = await assistantDataCache.getTokenBalances(accountId);
@@ -110,6 +113,25 @@ export async function buildCompactAssistantContext(
   );
 
   lines.push(`RISK_PROFILE: ${riskProfile}`);
+
+  const activeTriggers = triggerStorageService.list(accountId).filter((t) => t.status === "active");
+  if (activeTriggers.length) {
+    lines.push(
+      `ACTIVE_TRIGGERS (${activeTriggers.length}): ${activeTriggers
+        .slice(0, 6)
+        .map((t) => `${t.name}[${t.type}/${t.status}]`)
+        .join(" | ")}`,
+    );
+  } else {
+    lines.push("ACTIVE_TRIGGERS: none");
+  }
+  lines.push(
+    "TRIGGER_ACTIONS: create_trigger (requires approval card), list_triggers, pause_trigger, resume_trigger, delete_trigger",
+  );
+  lines.push(
+    "RULE_TRIGGERS: Never create triggers without user approving the review card. Never execute outside pre-approved limits.",
+  );
+
   lines.push("RULE: Never ask for the wallet address — it is above. Never invent balances or APYs.");
 
   if (options?.pendingProposalsSummary?.trim()) {

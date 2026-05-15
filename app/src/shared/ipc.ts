@@ -14,6 +14,8 @@ import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import type { NaviPoolRow, NaviPositionView, NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
 import type { YieldRiskProfile } from "@packages/core/yield/navi/navi-risk.heuristics";
 import type { DailyBriefAssistantMemoryPayload } from "./dailyBriefMemory";
+import type { TriggerExecutionRecord, TriggerRecord } from "@packages/core/triggers/triggers.types";
+import type { TriggerProposalSnapshotV1 } from "@packages/core/triggers/triggers.types";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -213,6 +215,20 @@ export type DestrallApi = {
       pickedMatchId: string;
     }) => Promise<RpcResult<AssistantMessageRow>>;
   };
+  triggers: {
+    list: (accountId: string) => Promise<RpcResult<TriggerRecord[]>>;
+    approve: (payload: {
+      accountId: string;
+      proposalSnapshot: TriggerProposalSnapshotV1;
+    }) => Promise<RpcResult<TriggerRecord>>;
+    pause: (payload: { accountId: string; triggerId: string }) => Promise<RpcResult<TriggerRecord>>;
+    resume: (payload: { accountId: string; triggerId: string }) => Promise<RpcResult<TriggerRecord>>;
+    delete: (payload: { accountId: string; triggerId: string }) => Promise<RpcResult<TriggerRecord>>;
+    executions: (payload: {
+      accountId: string;
+      triggerId: string;
+    }) => Promise<RpcResult<TriggerExecutionRecord[]>>;
+  };
 };
 
 export const IPCChannels = {
@@ -267,4 +283,10 @@ export const IPCChannels = {
   assistantChatGetActive: "assistant-chat:get-active",
   assistantChatSetActive: "assistant-chat:set-active",
   assistantChatResolveContactDisambiguation: "assistant-chat:resolve-contact-disambiguation",
+  triggersList: "triggers:list",
+  triggersApprove: "triggers:approve",
+  triggersPause: "triggers:pause",
+  triggersResume: "triggers:resume",
+  triggersDelete: "triggers:delete",
+  triggersExecutions: "triggers:executions",
 } as const;

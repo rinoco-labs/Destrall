@@ -1,9 +1,11 @@
 import { createFileRoute, /* Link, */ useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "@tanstack/react-router";
 import {
   // Bell,
   ChevronRight,
+  Zap,
   // DollarSign,
   Info,
   Brain,
@@ -246,6 +248,14 @@ function SettingsPage() {
             label={t("settings.developerMode")}
             value={t("settings.on")}
           /> */}
+          <Link
+            to="/triggers"
+            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/40 transition"
+          >
+            <Zap className="w-5 h-5 text-muted-foreground" />
+            <span className="flex-1 text-sm font-medium">Automation triggers</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
+          </Link>
           <SettingRow icon={Info} label={t("settings.version")} value="1.0.0" />
         </div>
 

@@ -5,6 +5,8 @@ import { registerNaviYieldPackage } from "../core/yield/navi/navi.package";
 import { registerCompositePackage } from "../core/composite/composite.package";
 import { registerRebalancePackage } from "../core/rebalance/rebalance.package";
 import { registerPortfolioPackage } from "../core/portfolio/portfolio.package";
+import { registerTriggersPackage } from "../core/triggers/triggers.package";
+import { registerTimePackage } from "../core/time/time.package";
 
 let registered = false;
 
@@ -19,4 +21,6 @@ export function registerCorePackages() {
   registerCompositePackage();
   registerRebalancePackage();
   registerPortfolioPackage();
+  registerTriggersPackage();
+  registerTimePackage();
 }

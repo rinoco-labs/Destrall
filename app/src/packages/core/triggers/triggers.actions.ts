@@ -1,0 +1,238 @@
+import type { AssistantStructuredResult, TriggerListResult } from "../../../assistant/assistantResultTypes";
+import type { ActionContext } from "../../runtime/actionContext";
+import {
+  createTriggerInputSchema,
+  executeDueTriggerInputSchema,
+  listTriggersInputSchema,
+  triggerIdInputSchema,
+  triggerNameHintInputSchema,
+} from "./triggers.schemas";
+import { parseTriggerFromText, categoryLabel } from "./triggerParser";
+import { buildTriggerProposal } from "./triggerProposalBuilder";
+import { triggerStorageService } from "./triggerStorageService";
+import { executeDueTriggerById } from "./triggerExecutor";
+import type { TriggerDraft, TriggerRecord } from "./triggers.types";
+import { defaultNextCheckAtIso } from "../../../services/time/time.service";
+import { formatTriggerNextCheckLabel } from "../../../services/time/trigger-schedule-display";
+
+function recordToListItem(r: TriggerRecord): TriggerListResult["triggers"][number] {
+  const cond = JSON.parse(r.conditionJson) as Record<string, unknown>;
+  const action = JSON.parse(r.actionJson) as Record<string, unknown>;
+  let conditionText = r.description;
+  if (r.type === "price" && cond.asset && cond.operator && cond.priceUsd) {
+    conditionText = `${cond.asset} ${cond.operator} $${cond.priceUsd}`;
+  }
+  let actionText = r.description;
+  if (action.type === "swap") {
+    actionText = `Swap ${action.amount} ${action.fromToken} → ${action.toToken}`;
+  } else if (action.type === "yield_collect") {
+    actionText = "Collect Navi yield";
+  }
+  const nextCheckLabel = formatTriggerNextCheckLabel(r);
+
+  return {
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    typeLabel: categoryLabel(r.type),
+    status: r.status,
+    conditionSummary: conditionText,
+    actionSummary: actionText,
+    nextCheckAt: r.nextCheckAt,
+    nextCheckLabel,
+    lastTriggeredAt: r.lastTriggeredAt,
+    executionCount: r.executionCount,
+    maxExecutions: r.maxExecutions,
+  };
+}
+
+function findTriggerByNameHint(accountId: string, hint: string): TriggerRecord | null {
+  const needle = hint.toLowerCase();
+  const rows = triggerStorageService.list(accountId);
+  return (
+    rows.find((r) => r.name.toLowerCase().includes(needle)) ??
+    rows.find((r) => r.description.toLowerCase().includes(needle)) ??
+    null
+  );
+}
+
+export async function createTriggerAction(
+  input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const parsed = createTriggerInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return [{ type: "error", message: "Invalid trigger request.", code: "invalid_input" }];
+  }
+
+  let draft: TriggerDraft | null = null;
+  if (parsed.data.draftJson) {
+    try {
+      draft = JSON.parse(parsed.data.draftJson) as TriggerDraft;
+    } catch {
+      return [{ type: "error", message: "Invalid trigger draft.", code: "invalid_draft" }];
+    }
+  } else if (parsed.data.naturalLanguage) {
+    const result = parseTriggerFromText(parsed.data.naturalLanguage);
+    if (result.ok === false) {
+      const ask = result.missing.join("; ");
+      return [
+        {
+          type: "error",
+          message: `I need a bit more detail: ${ask}`,
+          code: "trigger_incomplete",
+        },
+      ];
+    }
+    draft = result.draft;
+  } else {
+    return [{ type: "error", message: "Describe the trigger you want to create.", code: "invalid_input" }];
+  }
+
+  const net = ctx.network.getActiveNetwork();
+  const built = buildTriggerProposal({ draft, ctx, networkLabel: net.displayName });
+  if ("error" in built) {
+    return [{ type: "error", message: built.error, code: "trigger_build_failed" }];
+  }
+  return [built];
+}
+
+export async function listTriggersAction(
+  _input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const parsed = listTriggersInputSchema.safeParse(_input);
+  if (!parsed.success) {
+    return [{ type: "error", message: "Invalid request.", code: "invalid_input" }];
+  }
+  const rows = triggerStorageService.list(ctx.accountId);
+  const block: TriggerListResult = {
+    type: "trigger_list",
+    triggers: rows.map(recordToListItem),
+  };
+  return [block];
+}
+
+export async function pauseTriggerAction(
+  input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const byId = triggerIdInputSchema.safeParse(input);
+  const byName = triggerNameHintInputSchema.safeParse(input);
+  let id: string | null = byId.success ? byId.data.triggerId : null;
+  if (!id && byName.success) {
+    const row = findTriggerByNameHint(ctx.accountId, byName.data.nameHint);
+    id = row?.id ?? null;
+  }
+  if (!id) {
+    return [{ type: "error", message: "Which trigger should I pause?", code: "trigger_not_found" }];
+  }
+  const updated = triggerStorageService.setStatus(id, ctx.accountId, "paused");
+  if (!updated) {
+    return [{ type: "error", message: "Trigger not found.", code: "trigger_not_found" }];
+  }
+  return listTriggersAction({}, ctx);
+}
+
+export async function resumeTriggerAction(
+  input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const byId = triggerIdInputSchema.safeParse(input);
+  const byName = triggerNameHintInputSchema.safeParse(input);
+  let id: string | null = byId.success ? byId.data.triggerId : null;
+  if (!id && byName.success) {
+    const row = findTriggerByNameHint(ctx.accountId, byName.data.nameHint);
+    id = row?.id ?? null;
+  }
+  if (!id) {
+    return [{ type: "error", message: "Which trigger should I resume?", code: "trigger_not_found" }];
+  }
+  const updated = triggerStorageService.setStatus(id, ctx.accountId, "active");
+  if (!updated) {
+    return [{ type: "error", message: "Trigger not found.", code: "trigger_not_found" }];
+  }
+  const { runTriggerSchedulerNow } = await import("./triggerScheduler");
+  runTriggerSchedulerNow(ctx.accountId);
+  return listTriggersAction({}, ctx);
+}
+
+export async function deleteTriggerAction(
+  input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const byId = triggerIdInputSchema.safeParse(input);
+  const byName = triggerNameHintInputSchema.safeParse(input);
+  let id: string | null = byId.success ? byId.data.triggerId : null;
+  if (!id && byName.success) {
+    const row = findTriggerByNameHint(ctx.accountId, byName.data.nameHint);
+    id = row?.id ?? null;
+  }
+  if (!id) {
+    return [{ type: "error", message: "Which trigger should I delete?", code: "trigger_not_found" }];
+  }
+  const updated = triggerStorageService.setStatus(id, ctx.accountId, "deleted");
+  if (!updated) {
+    return [{ type: "error", message: "Trigger not found.", code: "trigger_not_found" }];
+  }
+  return listTriggersAction({}, ctx);
+}
+
+export async function executeDueTriggerAction(
+  input: Record<string, unknown>,
+  ctx: ActionContext,
+): Promise<AssistantStructuredResult[]> {
+  const parsed = executeDueTriggerInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return [{ type: "error", message: "Invalid request.", code: "invalid_input" }];
+  }
+  const row = triggerStorageService.get(parsed.data.triggerId, ctx.accountId);
+  if (!row) {
+    return [{ type: "error", message: "Trigger not found.", code: "trigger_not_found" }];
+  }
+  const outcome = await executeDueTriggerById(row.id);
+  if (outcome.status === "success") {
+    return [
+      {
+        type: "transaction_result",
+        title: "Trigger executed",
+        digest: outcome.txDigest ?? "",
+        summary: "Automated trigger completed within approved limits.",
+      },
+    ];
+  }
+  return [
+    {
+      type: "error",
+      message: outcome.error ?? "Trigger did not execute.",
+      code: "trigger_skipped",
+    },
+  ];
+}
+
+/** Called from IPC after user approves a trigger proposal card. */
+export function persistApprovedTrigger(params: {
+  accountId: string;
+  chain: string;
+  network: string;
+  draft: TriggerDraft;
+  approval: import("./triggers.types").TriggerApprovalLimits;
+}): TriggerRecord {
+  const schedule = params.draft.schedule ?? null;
+  const nextCheck = defaultNextCheckAtIso(params.draft.type, schedule);
+  const maxExec =
+    params.draft.maxExecutions ?? (params.draft.type === "price" ? 1 : params.approval.maxExecutions);
+  return triggerStorageService.saveApproved({
+    accountId: params.accountId,
+    chain: params.chain,
+    network: params.network,
+    draft: params.draft,
+    approval: {
+      ...params.approval,
+      approvedAt: new Date().toISOString(),
+    },
+    schedule,
+    maxExecutions: maxExec,
+    nextCheckAt: nextCheck,
+  });
+}

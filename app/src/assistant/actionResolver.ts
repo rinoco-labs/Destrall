@@ -43,7 +43,10 @@ export type StructuredCardKind =
   | "error"
   | "transaction_result"
   | "swap_execution_result"
-  | "yield_execution_result";
+  | "yield_execution_result"
+  | "trigger_proposal"
+  | "trigger_list"
+  | "time_info";
 
 export function structuredBlockKind(blockType: string): StructuredCardKind | "other" {
   switch (blockType) {
@@ -63,6 +66,9 @@ export function structuredBlockKind(blockType: string): StructuredCardKind | "ot
     case "transaction_result":
     case "swap_execution_result":
     case "yield_execution_result":
+    case "trigger_proposal":
+    case "trigger_list":
+    case "time_info":
       return blockType;
     default:
       return "other";
