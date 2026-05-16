@@ -20,6 +20,8 @@ import { Route as DeveloperRouteImport } from './routes/developer'
 import { Route as DailyBriefRouteImport } from './routes/daily-brief'
 import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as AssistantRouteImport } from './routes/assistant'
+import { Route as AssistantToolsRouteImport } from './routes/assistant-tools'
+import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountAccountIdRouteImport } from './routes/account.$accountId'
@@ -79,6 +81,16 @@ const AssistantRoute = AssistantRouteImport.update({
   path: '/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssistantToolsRoute = AssistantToolsRouteImport.update({
+  id: '/assistant-tools',
+  path: '/assistant-tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HowItWorksRoute = HowItWorksRouteImport.update({
+  id: '/how-it-works',
+  path: '/how-it-works',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
@@ -99,6 +111,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/assistant-tools': typeof AssistantToolsRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
   '/daily-brief': typeof DailyBriefRoute
   '/developer': typeof DeveloperRoute
@@ -115,6 +129,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/assistant-tools': typeof AssistantToolsRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
   '/daily-brief': typeof DailyBriefRoute
   '/developer': typeof DeveloperRoute
@@ -132,6 +148,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/assistant-tools': typeof AssistantToolsRoute
+  '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
   '/daily-brief': typeof DailyBriefRoute
   '/developer': typeof DeveloperRoute
@@ -150,6 +168,8 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/assistant-tools'
+    | '/how-it-works'
     | '/contacts'
     | '/daily-brief'
     | '/developer'
@@ -166,6 +186,8 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/assistant-tools'
+    | '/how-it-works'
     | '/contacts'
     | '/daily-brief'
     | '/developer'
@@ -182,6 +204,8 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/assistant-tools'
+    | '/how-it-works'
     | '/contacts'
     | '/daily-brief'
     | '/developer'
@@ -199,6 +223,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
   AssistantRoute: typeof AssistantRoute
+  AssistantToolsRoute: typeof AssistantToolsRoute
+  HowItWorksRoute: typeof HowItWorksRoute
   ContactsRoute: typeof ContactsRoute
   DailyBriefRoute: typeof DailyBriefRoute
   DeveloperRoute: typeof DeveloperRoute
@@ -291,6 +317,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assistant-tools': {
+      id: '/assistant-tools'
+      path: '/assistant-tools'
+      fullPath: '/assistant-tools'
+      preLoaderRoute: typeof AssistantToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/how-it-works': {
+      id: '/how-it-works'
+      path: '/how-it-works'
+      fullPath: '/how-it-works'
+      preLoaderRoute: typeof HowItWorksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/activity': {
       id: '/activity'
       path: '/activity'
@@ -319,6 +359,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
   AssistantRoute: AssistantRoute,
+  AssistantToolsRoute: AssistantToolsRoute,
+  HowItWorksRoute: HowItWorksRoute,
   ContactsRoute: ContactsRoute,
   DailyBriefRoute: DailyBriefRoute,
   DeveloperRoute: DeveloperRoute,

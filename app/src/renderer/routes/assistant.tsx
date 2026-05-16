@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AssistantStructuredMessageRenderer } from "@/components/assistant/AssistantStructuredMessageRenderer";
+import { AssistantEmptyState } from "@/components/assistant/AssistantStarterChips";
 import { parseAssistantMessageMetadata } from "../../assistant/assistantMessageMetadata";
 import type { AssistantStructuredResult } from "../../assistant/assistantResultTypes";
 import { desktopAssistantChatUpdateMessage } from "@/lib/desktopAssistantChat";
@@ -47,7 +48,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type AssistantSearch = { prompt?: string };
+
 export const Route = createFileRoute("/assistant")({
+  validateSearch: (search: Record<string, unknown>): AssistantSearch => {
+    const prompt = typeof search.prompt === "string" ? search.prompt.trim() : undefined;
+    return prompt ? { prompt } : {};
+  },
   component: AssistantPage,
   head: () => ({
     meta: [
@@ -308,6 +315,7 @@ function formatBytes(n: number) {
 }
 
 function AssistantPage() {
+  const { prompt: promptFromUrl } = useSearch({ from: "/assistant" });
   const [historyOpen, setHistoryOpen] = useState(true);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
@@ -369,6 +377,13 @@ function AssistantPage() {
   }, [activeAccountId, initializeForAccount]);
 
   useEffect(() => {
+    if (promptFromUrl) {
+      setMessage(promptFromUrl);
+      textareaRef.current?.focus();
+    }
+  }, [promptFromUrl]);
+
+  useEffect(() => {
     setOverlayMessages([]);
   }, [activeAccountId, activeChatId]);
 
@@ -425,6 +440,62 @@ function AssistantPage() {
       if (target) URL.revokeObjectURL(target.url);
       return prev.filter((a) => a.id !== id);
     });
+  };
+
+  const sendPrompt = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (!isDestrallDesktop()) {
+      setOverlayMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text: trimmed },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "Open the Destrall desktop app to chat with the on-device model.",
+        },
+      ]);
+      return;
+    }
+
+    if (!activeAccountId) {
+      setOverlayMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text: trimmed },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "No active wallet account. Unlock your wallet or add an account, then try again.",
+        },
+      ]);
+      return;
+    }
+
+    if (!isLoaded) {
+      void refreshAi();
+      setOverlayMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "user", text: trimmed },
+        {
+          id: crypto.randomUUID(),
+          kind: "assistant",
+          text: "The assistant AI is not ready yet. Wait for it to finish loading, or open **Settings** to download it.",
+        },
+      ]);
+      return;
+    }
+
+    try {
+      await sendChatMessage(activeAccountId, activeChatId, trimmed);
+      textareaRef.current?.focus();
+    } catch (e) {
+      const err = e instanceof Error ? e.message : "Could not send message.";
+      setOverlayMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), kind: "assistant", text: `**Error**\n${err}` },
+      ]);
+    }
   };
 
   const handleSend = async () => {
@@ -495,16 +566,7 @@ function AssistantPage() {
     }
 
     setMessage("");
-    try {
-      await sendChatMessage(activeAccountId, activeChatId, text);
-      textareaRef.current?.focus();
-    } catch (e) {
-      const err = e instanceof Error ? e.message : "Could not send message.";
-      setOverlayMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), kind: "assistant", text: `**Error**\n${err}` },
-      ]);
-    }
+    await sendPrompt(text);
   };
 
   const onDragEnter = (e: React.DragEvent) => {
@@ -532,6 +594,9 @@ function AssistantPage() {
     activeAccountId != null ? (chatSearchOverride ?? chatsByAccountId[activeAccountId] ?? []) : [];
   const pinnedRows = sidebarList.filter((c) => c.pinned);
   const recentRows = sidebarList.filter((c) => !c.pinned);
+
+  const hasUserMessages = threadItems.some((t) => t.type === "user");
+  const showEmptyState = !hasUserMessages && !assistantStreaming;
 
   const rowSubtitle = (row: AssistantChatRow) => {
     if (row.lastPreview) {
@@ -586,6 +651,15 @@ function AssistantPage() {
             onDrop={onDrop}
           >
             <div ref={scrollRef} className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {showEmptyState ? (
+                <AssistantEmptyState
+                  disabled={assistantStreaming || !isLoaded}
+                  onSelectPrompt={(prompt) => {
+                    setMessage(prompt);
+                    void sendPrompt(prompt);
+                  }}
+                />
+              ) : null}
               {isDestrallDesktop() && chatError ? (
                 <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {chatError}
@@ -623,6 +697,10 @@ function AssistantPage() {
                     }}
                     onReloadThread={async () => {
                       await loadMessages(activeAccountId, item.chatId);
+                    }}
+                    onTryPrompt={(prompt) => {
+                      setMessage(prompt);
+                      void sendPrompt(prompt);
                     }}
                   />
                 );

@@ -12,6 +12,7 @@ import { behaviorMemoryLines } from "./behaviorMemoryStore";
 import { dailyBriefAssistantMemoryLines } from "../main/services/dailyBriefMemoryService";
 import { buildAssistantTimeContextBlock } from "../services/time/time.service";
 import { triggerStorageService } from "../packages/core/triggers/triggerStorageService";
+import { buildAssistantCapabilitiesContextBlock } from "./knowledge/assistant-capabilities.service";
 
 function contactInScope(accountId: string, row: { accountId: string | null; chain: string }): boolean {
   if (row.chain !== "sui") return false;
@@ -133,6 +134,7 @@ export async function buildCompactAssistantContext(
   );
 
   lines.push("RULE: Never ask for the wallet address — it is above. Never invent balances or APYs.");
+  lines.push(buildAssistantCapabilitiesContextBlock());
 
   if (options?.pendingProposalsSummary?.trim()) {
     lines.push(`PENDING_PROPOSALS:\n${options.pendingProposalsSummary.trim()}`.slice(0, 800));

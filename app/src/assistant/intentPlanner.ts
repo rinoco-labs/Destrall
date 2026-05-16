@@ -38,6 +38,11 @@ import {
 import { triggerStorageService } from "../packages/core/triggers/triggerStorageService";
 import { timezoneSettingsService } from "../services/time/timezone.service";
 import { hasScheduleIntent } from "../packages/core/triggers/scheduledTriggerParser";
+import {
+  buildAssistantCapabilitiesStructuredResult,
+  buildCapabilityHelpCaption,
+  matchCapabilityHelpIntent,
+} from "./knowledge/assistant-capabilities.service";
 
 function normalizeUserText(s: string): string {
   return s.trim().replace(/\s+/g, " ");
@@ -153,6 +158,8 @@ function captionForBlocks(
       return `You have ${head.triggers.length} trigger(s) on the card — pause, resume, or delete from there.`;
     case "time_info":
       return `It's ${head.formatted} (${head.weekday}).`;
+    case "assistant_capabilities":
+      return "Here are the main things I can help you do.";
     case "contact_disambiguation":
       return "Pick the intended recipient on the card to continue.";
     case "transaction_result":
@@ -647,6 +654,20 @@ export async function planAssistantStructuredTurn(
       mode: "deterministic",
       blocks: [],
       caption: formatActivityCaption(items, networkLabel),
+    };
+  }
+
+  const capabilityHelp = matchCapabilityHelpIntent(text);
+  if (capabilityHelp) {
+    const blocks = [
+      buildAssistantCapabilitiesStructuredResult(
+        capabilityHelp.kind === "tool" ? { highlightToolId: capabilityHelp.toolId } : undefined,
+      ),
+    ];
+    return {
+      mode: "deterministic",
+      blocks,
+      caption: buildCapabilityHelpCaption(capabilityHelp),
     };
   }
 

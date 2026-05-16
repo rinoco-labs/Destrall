@@ -290,6 +290,25 @@ export type AssistantErrorResult = {
   code?: string;
 };
 
+export type AssistantCapabilityToolRow = {
+  id: string;
+  title: string;
+  tagline: string;
+  description: string;
+  examples: string[];
+  approvalNote: string;
+  risks: string[];
+};
+
+export type AssistantCapabilitiesResult = {
+  type: "assistant_capabilities";
+  title: string;
+  subtitle: string;
+  tools: AssistantCapabilityToolRow[];
+  /** When set, that tool row starts expanded (e.g. “how do triggers work?”). */
+  highlightToolId?: string;
+};
+
 export type AssistantStructuredResult =
   | PortfolioSummaryResult
   | WalletAddressResult
@@ -309,6 +328,7 @@ export type AssistantStructuredResult =
   | TriggerProposalResult
   | TriggerListResult
   | TimeInfoResult
+  | AssistantCapabilitiesResult
   | AssistantErrorResult;
 
 export type AssistantMessageMetadataV1 = {

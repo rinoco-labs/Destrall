@@ -24,6 +24,7 @@ import {
   WalletBubble,
   type ChatActionBubbleMessage,
 } from "./AssistantChatBubbles";
+import { AssistantCapabilitiesCard } from "./AssistantCapabilitiesCard";
 import {
   desktopConfirmTransfer,
   desktopExecuteComposite,
@@ -78,6 +79,7 @@ export function AssistantStructuredMessageRenderer({
   blocks: blocksProp,
   onUpdateMessage,
   onReloadThread,
+  onTryPrompt,
 }: {
   accountId: string;
   chatId: string;
@@ -86,6 +88,7 @@ export function AssistantStructuredMessageRenderer({
   blocks: AssistantStructuredResult[];
   onUpdateMessage: (metadata: string) => Promise<void>;
   onReloadThread: () => Promise<void>;
+  onTryPrompt?: (prompt: string) => void;
 }) {
   const [meta, setMeta] = useState<string | null>(initialMetadata);
   const [blocks, setBlocks] = useState(blocksProp);
@@ -496,6 +499,7 @@ export function AssistantStructuredMessageRenderer({
             block={b}
             meta={meta}
             onUpdateMessage={onUpdateMessage}
+            onTryPrompt={onTryPrompt}
             onApprove={() => {
               if (b.type === "composite_swap_then_deposit" && b.status === "pending") {
                 void handleApprove(b);
@@ -620,6 +624,7 @@ function StructuredBlockView({
   onApprove,
   onReject,
   onReloadThread,
+  onTryPrompt,
 }: {
   accountId: string;
   chatId: string;
@@ -630,8 +635,11 @@ function StructuredBlockView({
   onApprove: () => void;
   onReject: () => void;
   onReloadThread: () => Promise<void>;
+  onTryPrompt?: (prompt: string) => void;
 }) {
   switch (block.type) {
+    case "assistant_capabilities":
+      return <AssistantCapabilitiesCard payload={block} onTryPrompt={onTryPrompt} />;
     case "portfolio_summary": {
       const holdings = block.assets.map((a) => ({
         symbol: a.symbol,

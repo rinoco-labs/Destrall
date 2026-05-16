@@ -46,7 +46,8 @@ export type StructuredCardKind =
   | "yield_execution_result"
   | "trigger_proposal"
   | "trigger_list"
-  | "time_info";
+  | "time_info"
+  | "assistant_capabilities";
 
 export function structuredBlockKind(blockType: string): StructuredCardKind | "other" {
   switch (blockType) {
@@ -69,6 +70,7 @@ export function structuredBlockKind(blockType: string): StructuredCardKind | "ot
     case "trigger_proposal":
     case "trigger_list":
     case "time_info":
+    case "assistant_capabilities":
       return blockType;
     default:
       return "other";

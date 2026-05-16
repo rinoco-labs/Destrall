@@ -256,6 +256,22 @@ function SettingsPage() {
             <span className="flex-1 text-sm font-medium">Automation triggers</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
           </Link>
+          <Link
+            to="/how-it-works"
+            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/40 transition"
+          >
+            <Info className="w-5 h-5 text-muted-foreground" />
+            <span className="flex-1 text-sm font-medium">How It Works</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
+          </Link>
+          <Link
+            to="/assistant-tools"
+            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/40 transition"
+          >
+            <Sparkles className="w-5 h-5 text-muted-foreground" />
+            <span className="flex-1 text-sm font-medium">Assistant Tools</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
+          </Link>
           <SettingRow icon={Info} label={t("settings.version")} value="1.0.0" />
         </div>
 
