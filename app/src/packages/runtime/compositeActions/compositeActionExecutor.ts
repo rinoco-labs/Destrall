@@ -1,9 +1,3 @@
-/**
- * Future: single PTB or ordered execution after composite approval.
- * Today swaps and Navi steps are approved on their respective cards in order.
- */
-export type CompositeExecutionStage = "swap" | "deposit";
-
-export function describeCompositeExecutionOrder(): CompositeExecutionStage[] {
-  return ["swap", "deposit"];
-}
+/** @deprecated Import from `@packages/runtime/composite/compositeExecutor` */
+export { executeCompositeProposal } from "../composite/compositeExecutor";
+export { describeCompositeExecutionOrder } from "../composite/compositeExecutor";

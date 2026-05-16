@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type {
   AssistantStructuredResult,
+  CompositeSwapThenDepositResult,
   ContactDisambiguationResult,
+  RebalanceProposalResult,
   SendProposalResult,
   SwapProposalResult,
   NaviDepositProposalResult,
@@ -22,7 +24,14 @@ import {
   WalletBubble,
   type ChatActionBubbleMessage,
 } from "./AssistantChatBubbles";
-import { desktopConfirmTransfer, desktopExecuteNaviYield, desktopExecuteSwap, desktopPrepareTransfer } from "@/lib/desktopChain";
+import {
+  desktopConfirmTransfer,
+  desktopExecuteComposite,
+  desktopExecuteNaviYield,
+  desktopExecuteRebalance,
+  desktopExecuteSwap,
+  desktopPrepareTransfer,
+} from "@/lib/desktopChain";
 import { useWalletStore } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
 import {
@@ -101,7 +110,132 @@ export function AssistantStructuredMessageRenderer({
   );
 
   const handleApprove = useCallback(
-    async (p: SendProposalResult | SwapProposalResult | NaviDepositProposalResult | NaviWithdrawProposalResult) => {
+    async (
+      p:
+        | SendProposalResult
+        | SwapProposalResult
+        | NaviDepositProposalResult
+        | NaviWithdrawProposalResult
+        | CompositeSwapThenDepositResult
+        | RebalanceProposalResult,
+    ) => {
+      if (p.type === "composite_swap_then_deposit") {
+        const snap = p.proposalSnapshot;
+        if (!snap) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Missing composite proposal data. Ask again to prepare.",
+          });
+          return;
+        }
+        if (accountId !== snap.accountId) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "This composite action was prepared for another account.",
+          });
+          return;
+        }
+        const net = useNetworkStore.getState().network;
+        if (!net || net.activeEnvironment !== snap.suiEnvironment) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Network changed. Prepare the composite action again.",
+          });
+          return;
+        }
+        if (Date.now() > snap.expiresAtMs) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Composite proposal expired. Prepare again.",
+          });
+          return;
+        }
+
+        await patchProposal(p.proposalId, { status: "executing", errorMessage: undefined });
+        try {
+          const result = await desktopExecuteComposite({ accountId, proposalSnapshot: snap });
+          await patchProposal(p.proposalId, {
+            status: "success",
+            digest: result.digest,
+            explorerUrl: result.explorerUrl,
+            errorMessage: undefined,
+          });
+          const resultBlock = serializeAssistantMessageMetadata([
+            {
+              type: "yield_execution_result",
+              title: "Composite action submitted",
+              digest: result.digest,
+              explorerUrl: result.explorerUrl,
+              summary: `Swap + deposit submitted. Digest ${result.digest.slice(0, 10)}…`,
+              kind: "deposit",
+            },
+          ]);
+          await desktopAssistantChatAddMessage({
+            accountId,
+            chatId,
+            role: "assistant",
+            content: "Composite swap and deposit submitted.",
+            metadata: resultBlock,
+          });
+          await onReloadThread();
+          void useWalletStore.getState().refreshWallets();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Composite transaction failed.";
+          await patchProposal(p.proposalId, { status: "failed", errorMessage: msg });
+          await onReloadThread();
+        }
+        return;
+      }
+
+      if (p.type === "rebalance_proposal") {
+        const snap = p.proposalSnapshot;
+        if (!snap || !p.executable) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Rebalance is not executable. Prepare swaps individually from the plan.",
+          });
+          return;
+        }
+        if (Date.now() > snap.expiresAtMs) {
+          await patchProposal(p.proposalId, {
+            status: "failed",
+            errorMessage: "Rebalance proposal expired. Prepare again.",
+          });
+          return;
+        }
+        await patchProposal(p.proposalId, { status: "executing", errorMessage: undefined });
+        try {
+          const result = await desktopExecuteRebalance({ accountId, proposalSnapshot: snap });
+          await patchProposal(p.proposalId, {
+            status: "success",
+            digest: result.digest,
+            explorerUrl: result.explorerUrl,
+          });
+          await desktopAssistantChatAddMessage({
+            accountId,
+            chatId,
+            role: "assistant",
+            content: "Rebalance submitted.",
+            metadata: serializeAssistantMessageMetadata([
+              {
+                type: "swap_execution_result",
+                title: "Rebalance submitted",
+                digest: result.digest,
+                explorerUrl: result.explorerUrl,
+                summary: `Rebalance PTB submitted. Digest ${result.digest.slice(0, 10)}…`,
+              },
+            ]),
+          });
+          await onReloadThread();
+          void useWalletStore.getState().refreshWallets();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Rebalance failed.";
+          await patchProposal(p.proposalId, { status: "failed", errorMessage: msg });
+          await onReloadThread();
+        }
+        return;
+      }
+
       if (p.type === "swap_proposal") {
         const snap = p.proposalSnapshot;
         if (!snap) {
@@ -363,8 +497,12 @@ export function AssistantStructuredMessageRenderer({
             meta={meta}
             onUpdateMessage={onUpdateMessage}
             onApprove={() => {
-              if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
-                void handleApprove(b.swapProposal);
+              if (b.type === "composite_swap_then_deposit" && b.status === "pending") {
+                void handleApprove(b);
+                return;
+              }
+              if (b.type === "rebalance_proposal" && b.status === "pending" && b.executable) {
+                void handleApprove(b);
                 return;
               }
               if (
@@ -376,8 +514,12 @@ export function AssistantStructuredMessageRenderer({
               }
             }}
             onReject={() => {
-              if (b.type === "composite_swap_then_deposit" && b.swapProposal.status === "pending") {
-                void handleReject(b.swapProposal.proposalId);
+              if (b.type === "composite_swap_then_deposit" && b.status === "pending") {
+                void handleReject(b.proposalId);
+                return;
+              }
+              if (b.type === "rebalance_proposal" && b.status === "pending") {
+                void handleReject(b.proposalId);
                 return;
               }
               if (isProposalStructuredResult(b) && b.status === "pending") void handleReject(b.proposalId);
@@ -616,27 +758,102 @@ function StructuredBlockView({
       return (
         <div className="space-y-3">
           <div className="rounded-2xl border border-sky-500/35 bg-card/50 p-4 space-y-2 text-sm max-w-md">
-            <p className="text-[10px] font-bold tracking-[0.18em] text-sky-600 uppercase">Staged swap → deposit</p>
-            <p className="text-xs text-muted-foreground">
-              Step 1: approve the swap on the card below. Step 2 (after the swap confirms on-chain): prepare a Navi
-              deposit of ~{block.depositPreview.amountDisplay} {block.depositPreview.asset} into {block.depositPreview.poolLabel}
-              {block.depositPreview.apyText ? ` (${block.depositPreview.apyText})` : ""} so amounts match your wallet.
+            <p className="text-[10px] font-bold tracking-[0.18em] text-sky-600 uppercase">
+              {block.executionModel === "ptb" ? "Composite action" : "Staged swap → deposit"}
             </p>
+            {block.executionModel === "ptb" && block.card ? (
+              <>
+                <ol className="text-xs space-y-1 list-decimal pl-4 text-muted-foreground">
+                  {block.steps.map((s) => (
+                    <li key={s.index}>{s.label}</li>
+                  ))}
+                </ol>
+                <ActionBubble
+                  msg={{
+                    id: `${messageId}:${block.proposalId}`,
+                    kind: "action",
+                    status: block.status,
+                    title: block.card.title,
+                    label: block.card.label,
+                    source: block.card.source,
+                    flows: block.card.flows,
+                    details: block.card.details,
+                    note: block.card.note,
+                    digest: block.digest,
+                    errorMessage: block.errorMessage,
+                  }}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Approve the swap first, then prepare deposit of ~{block.depositPreview.amountDisplay}{" "}
+                  {block.depositPreview.asset}.
+                </p>
+                <ActionBubble
+                  msg={proposalToActionMessage(messageId, block.swapProposal)}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                />
+              </>
+            )}
             <ul className="text-xs space-y-1 list-disc pl-4 text-muted-foreground">
               {block.riskNotes.map((r, idx) => (
                 <li key={idx}>{r}</li>
               ))}
             </ul>
           </div>
-          <ActionBubble
-            msg={proposalToActionMessage(messageId, block.swapProposal)}
-            onApprove={onApprove}
-            onReject={onReject}
-          />
         </div>
       );
     }
     case "rebalance_proposal":
+      if (block.executable && block.status === "pending") {
+        return (
+          <div className="space-y-3">
+            <ProtocolBubble
+              payload={{
+                view: "rebalance",
+                title: "Rebalance plan",
+                source: "Destrall planner",
+                network: block.network,
+                currentPct: block.currentPct,
+                targetPct: block.targetPct,
+                swaps: block.swaps,
+                riskNotes: block.riskNotes,
+                gasNote: block.gasNote,
+                dustSkipped: block.dustSkipped,
+              }}
+            />
+            <ActionBubble
+              msg={{
+                id: `${messageId}:${block.proposalId}`,
+                kind: "action",
+                status: block.status ?? "pending",
+                title: "Rebalance portfolio",
+                label: `${block.swaps.length} swap leg(s) · one PTB`,
+                source: { type: "package", name: "DESTRALL REBALANCE" },
+                flows: block.swaps.map((s) => ({
+                  direction: "out" as const,
+                  amount: s.amountDisplay,
+                  token: s.fromSymbol,
+                  kind: "token" as const,
+                })),
+                details: [
+                  { k: "Legs", v: String(block.swaps.length) },
+                  { k: "Network", v: block.network },
+                ],
+                note: "Approving signs one programmable transaction with all rebalance swaps.",
+                digest: block.digest,
+                errorMessage: block.errorMessage,
+              }}
+              onApprove={onApprove}
+              onReject={onReject}
+            />
+          </div>
+        );
+      }
       return (
         <ProtocolBubble
           payload={{

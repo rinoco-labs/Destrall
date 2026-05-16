@@ -1,6 +1,6 @@
 import type { AssistantStructuredResult } from "../../../assistant/assistantResultTypes";
 import type { ActionContext } from "../../runtime/actionContext";
-import { buildSwapThenDepositPlan } from "../../runtime/compositeActions/compositeProposalBuilder";
+import { buildSwapThenDepositPlan } from "../../runtime/composite/compositeProposalBuilder";
 import { prepareSwapThenDepositInputSchema } from "./composite.schemas";
 
 export async function prepareSwapThenDepositAction(

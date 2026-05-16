@@ -34,11 +34,16 @@ export function patchStructuredProposal(
     if ("proposalId" in b && b.proposalId === proposalId) {
       return { ...b, ...patch } as AssistantStructuredResult;
     }
-    if (b.type === "composite_swap_then_deposit" && b.swapProposal.proposalId === proposalId) {
-      return {
-        ...b,
-        swapProposal: { ...b.swapProposal, ...patch } as SwapProposalResult,
-      } as AssistantStructuredResult;
+    if (b.type === "composite_swap_then_deposit") {
+      if (b.proposalId === proposalId) {
+        return { ...b, ...patch } as AssistantStructuredResult;
+      }
+      if (b.swapProposal.proposalId === proposalId) {
+        return {
+          ...b,
+          swapProposal: { ...b.swapProposal, ...patch } as SwapProposalResult,
+        } as AssistantStructuredResult;
+      }
     }
     return b;
   });

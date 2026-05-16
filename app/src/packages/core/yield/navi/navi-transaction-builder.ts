@@ -1,8 +1,9 @@
-import { Transaction } from "@mysten/sui/transactions";
+import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
 import { getSuiClientForEnvironment } from "../../../../main/services/chains/sui/sui-client.service";
 import { isNormalizedSuiNativeCoin } from "../../../../main/services/chains/sui/sui-coin-type-normalize";
+import type { TransactionBuildContext } from "../../../../services/transactions/transactionContext";
 import { fetchNaviConfig } from "./navi-config.service";
 import type { NaviConfig, NaviOracleFeedRef, NaviPoolRow } from "./navi.types";
 
@@ -117,56 +118,102 @@ async function selectMinimumCoins(
   return selected;
 }
 
-export async function buildNaviDepositTransactionBytes(params: {
-  pool: NaviPoolRow;
-  amountRaw: bigint;
-  senderAddress: string;
-  env: SuiChainEnvironment;
-}): Promise<Uint8Array> {
-  const config = await fetchNaviConfig();
-  const client = getSuiClientForEnvironment(params.env);
-  const tx = new Transaction();
-  tx.setSender(params.senderAddress);
-  const pool = params.pool;
-  const amountRaw = params.amountRaw;
-
+/** Resolve spend coin from wallet or use a piped coin from a prior PTB step. */
+async function resolveDepositCoin(
+  tx: Transaction,
+  client: SuiJsonRpcClient,
+  params: {
+    pool: NaviPoolRow;
+    amountRaw: bigint;
+    senderAddress: string;
+    inputCoin?: TransactionObjectArgument;
+  },
+): Promise<TransactionObjectArgument> {
+  const { pool, amountRaw, senderAddress, inputCoin } = params;
   const isSui = isNormalizedSuiNativeCoin(pool.coinType);
 
-  let coinToDeposit: unknown;
-  if (isSui) {
-    [coinToDeposit] = tx.splitCoins(tx.gas, [amountRaw]);
-  } else {
-    const selectedCoins = await selectMinimumCoins(
-      client,
-      params.senderAddress,
-      pool.coinType,
-      amountRaw,
-      pool.symbol,
-    );
-    const primaryCoin = tx.object(selectedCoins[0].objectId);
-    if (selectedCoins.length > 1) {
-      const otherCoins = selectedCoins.slice(1).map((c) => tx.object(c.objectId));
-      tx.mergeCoins(primaryCoin, otherCoins);
-    }
-    [coinToDeposit] = tx.splitCoins(primaryCoin, [amountRaw]);
+  if (inputCoin) {
+    const [depositCoin] = tx.splitCoins(inputCoin, [amountRaw]);
+    return depositCoin;
   }
+
+  if (isSui) {
+    const [coinToDeposit] = tx.splitCoins(tx.gas, [amountRaw]);
+    return coinToDeposit;
+  }
+
+  const selectedCoins = await selectMinimumCoins(client, senderAddress, pool.coinType, amountRaw, pool.symbol);
+  const primaryCoin = tx.object(selectedCoins[0].objectId);
+  if (selectedCoins.length > 1) {
+    const otherCoins = selectedCoins.slice(1).map((c) => tx.object(c.objectId));
+    tx.mergeCoins(primaryCoin, otherCoins);
+  }
+  const [coinToDeposit] = tx.splitCoins(primaryCoin, [amountRaw]);
+  return coinToDeposit;
+}
+
+/**
+ * Append Navi deposit commands to an existing PTB (optional piped input coin).
+ */
+export async function buildNaviDepositIntoTransaction(
+  ctx: TransactionBuildContext,
+  params: {
+    pool: NaviPoolRow;
+    amountRaw: bigint;
+    inputCoin?: TransactionObjectArgument;
+    outputAlias?: string;
+  },
+): Promise<void> {
+  const config = await fetchNaviConfig();
+  const client = getSuiClientForEnvironment(ctx.suiEnvironment);
+  const { tx } = ctx;
+  const coinToDeposit = await resolveDepositCoin(tx, client, {
+    pool: params.pool,
+    amountRaw: params.amountRaw,
+    senderAddress: ctx.senderAddress,
+    inputCoin: params.inputCoin,
+  });
 
   tx.moveCall({
     target: `${config.protocolPackage}::incentive_v3::entry_deposit`,
     arguments: [
       tx.object(CLOCK_ID),
       tx.object(config.storageId),
-      tx.object(pool.poolObjectId),
-      tx.pure.u8(pool.assetId),
-      coinToDeposit as never,
-      tx.pure.u64(amountRaw),
+      tx.object(params.pool.poolObjectId),
+      tx.pure.u8(params.pool.assetId),
+      coinToDeposit,
+      tx.pure.u64(params.amountRaw),
       tx.object(config.incentiveV2),
       tx.object(config.incentiveV3),
     ],
-    typeArguments: [pool.coinType],
+    typeArguments: [params.pool.coinType],
   });
 
-  return tx.build({ client });
+  if (params.outputAlias) {
+    ctx.aliases.set(params.outputAlias, coinToDeposit);
+  }
+  console.info("[navi] deposit command appended", params.pool.symbol, params.amountRaw.toString());
+}
+
+export async function buildNaviDepositTransactionBytes(params: {
+  pool: NaviPoolRow;
+  amountRaw: bigint;
+  senderAddress: string;
+  env: SuiChainEnvironment;
+}): Promise<Uint8Array> {
+  const client = getSuiClientForEnvironment(params.env);
+  const ctx: TransactionBuildContext = {
+    tx: new Transaction(),
+    senderAddress: params.senderAddress,
+    suiEnvironment: params.env,
+    aliases: new Map(),
+  };
+  ctx.tx.setSender(params.senderAddress);
+  await buildNaviDepositIntoTransaction(ctx, {
+    pool: params.pool,
+    amountRaw: params.amountRaw,
+  });
+  return ctx.tx.build({ client });
 }
 
 export async function buildNaviWithdrawTransactionBytes(params: {

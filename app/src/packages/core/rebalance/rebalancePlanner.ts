@@ -2,46 +2,64 @@ import { randomUUID } from "node:crypto";
 import type { RebalanceProposalResult } from "../../../assistant/assistantResultTypes";
 import type { TokenBalanceView } from "../../../types/blockchain";
 
-const DUST_USD = 4.5;
+/** Floor / ceiling for per-leg notional filter (USD) */
+const DUST_USD_MIN = 0.35;
+const DUST_USD_MAX = 25;
+/** Leg must be at least this fraction of portfolio value (e.g. 1.5% of ~$6 → ~$0.10, clamped to min) */
+const DUST_PORTFOLIO_PCT = 0.015;
+/** Minimum portfolio drift (%) for a single leg */
+const MIN_DRIFT_PCT = 1.0;
+
+/** Scale dust with portfolio size so small wallets are not treated as already balanced. */
+export function rebalanceDustThresholdUsd(totalUsd: number): number {
+  if (totalUsd <= 0) return DUST_USD_MIN;
+  return Math.min(DUST_USD_MAX, Math.max(DUST_USD_MIN, totalUsd * DUST_PORTFOLIO_PCT));
+}
 
 export type NormalizedTarget = { symbol: string; pct: number };
 
-/** Parse strings like "30% SUI, 10% WAL, 20% DEEP and the rest in USDC" */
+/** Parse strings like "30% SUI, 10% WAL" or "Rebalance 30% Sui 20% WAL and the rest to USDC" */
 export function parseRebalanceTargets(text: string): NormalizedTarget[] | null {
   const t = text.trim();
   if (!t) return null;
   const hasPct = /\d+\s*%/.test(t);
   if (!hasPct) return null;
 
+  let work = t.replace(/^\s*rebalance(?:\s+my\s+portfolio)?\s+/i, "").trim();
+
   let restSymbol: string | null = null;
-  let work = t;
-  const restM = t.toLowerCase().match(/\b(?:and\s+)?the\s+rest\s+(?:in|as)?\s+(\w+)\b/);
+  const restM = work.toLowerCase().match(/\b(?:and\s+)?the\s+rest\s+(?:to|into|in|as)\s+(\w+)\b/);
   if (restM) {
     restSymbol = restM[1].toUpperCase();
-    work = work.replace(/\b(?:and\s+)?the\s+rest\s+(?:in|as)?\s+\w+/i, "").trim();
+    work = work.replace(/\b(?:and\s+)?the\s+rest\s+(?:to|into|in|as)\s+\w+/i, "").trim();
   }
 
-  const parts = work
-    .split(/[,;]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
   const out: NormalizedTarget[] = [];
   let explicitSum = 0;
-
-  for (const part of parts) {
-    const m = part.match(/^(\d+(?:\.\d+)?)\s*%\s*(?:of\s+)?(\w+)\s*$/i);
-    if (!m) continue;
+  const pctRe = /(\d+(?:\.\d+)?)\s*%\s*(?:of\s+)?([a-zA-Z][a-zA-Z0-9]*)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pctRe.exec(work)) !== null) {
     const pct = parseFloat(m[1]);
     const sym = m[2].toUpperCase();
     if (!Number.isFinite(pct) || pct <= 0 || sym.length < 2) continue;
     explicitSum += pct;
-    out.push({ symbol: sym, pct });
+    const existing = out.find((row) => row.symbol === sym);
+    if (existing) {
+      existing.pct += pct;
+    } else {
+      out.push({ symbol: sym, pct });
+    }
   }
 
   if (restSymbol) {
     const restPct = Math.max(0, 100 - explicitSum);
     if (restPct > 0.25) {
-      out.push({ symbol: restSymbol, pct: restPct });
+      const existing = out.find((row) => row.symbol === restSymbol);
+      if (existing) {
+        existing.pct += restPct;
+      } else {
+        out.push({ symbol: restSymbol, pct: restPct });
+      }
     }
   }
 
@@ -114,6 +132,9 @@ export function calculateSwapDeltas(
     return { swaps: [], dustSkipped: ["No priced balances — add USD values or wait for prices to refresh."] };
   }
 
+  const dustUsd = rebalanceDustThresholdUsd(totalUsd);
+  console.info("[rebalance] dust threshold", { totalUsd: totalUsd.toFixed(2), dustUsd: dustUsd.toFixed(2) });
+
   const curVal = new Map(current.map((c) => [c.symbol, c.valueUsd]));
   const tgtVal = new Map(calculateTargetAllocation(totalUsd, target).map((r) => [r.symbol, r.valueUsd]));
 
@@ -148,15 +169,15 @@ export function calculateSwapDeltas(
     let buyer: string | null = null;
     let buyDelta = 0;
     for (const [s, d] of work) {
-      if (d > DUST_USD && d > buyDelta) {
+      if (d > dustUsd && d > buyDelta) {
         buyer = s;
         buyDelta = d;
       }
     }
-    if (!buyer || buyDelta <= DUST_USD) break;
+    if (!buyer || buyDelta <= dustUsd) break;
 
     const sellers = [...work.entries()]
-      .filter(([s, d]) => s !== buyer && d < -DUST_USD)
+      .filter(([s, d]) => s !== buyer && d < -dustUsd)
       .sort((a, b) => a[1] - b[1]);
 
     let progressed = false;
@@ -169,13 +190,18 @@ export function calculateSwapDeltas(
         continue;
       }
       const units = moveUsd / rate;
-      if (units * rate < DUST_USD) continue;
+      if (units * rate < dustUsd) continue;
+
+      const driftPct = (moveUsd / totalUsd) * 100;
+      if (driftPct < MIN_DRIFT_PCT) {
+        dustSkipped.push(`Skipped ${seller}→${buyer} (~${driftPct.toFixed(2)}% drift).`);
+        continue;
+      }
 
       swaps.push({
         fromSymbol: seller,
         toSymbol: buyer,
         amountDisplay: formatAmt(seller, units),
-        note: "Prepare each swap in the assistant or Swap tab; route may require an intermediate hop (for example via USDC).",
       });
 
       work.set(seller, sellDelta + moveUsd);
@@ -187,7 +213,7 @@ export function calculateSwapDeltas(
   }
 
   for (const [sym, d] of work) {
-    if (Math.abs(d) > 0 && Math.abs(d) < DUST_USD) {
+    if (Math.abs(d) > 0 && Math.abs(d) < dustUsd) {
       dustSkipped.push(`Ignored dust for ${sym} (~$${Math.abs(d).toFixed(2)}).`);
     }
   }
@@ -213,9 +239,9 @@ export function buildRebalanceProposal(params: {
     pct: `${t.pct.toFixed(1)}%`,
   }));
   const riskNotes = [
-    "Swaps use live routes (Aftermath); amounts are estimates until each swap card is prepared.",
-    "Gas is paid in SUI per transaction.",
-    "Prices and APYs move — re-check before approving.",
+    "Swaps use live Aftermath routes bundled into one programmable transaction when you approve.",
+    "Gas is paid in SUI once per rebalance PTB.",
+    "Prices move — quotes expire; re-prepare if approval is delayed.",
   ];
   return {
     type: "rebalance_proposal",

@@ -16,11 +16,13 @@ import { isLikelyStablecoin } from "../packages/core/yield/navi/navi-risk.heuris
 import { shouldUseDeterministicAssistantReply } from "./actionResolver";
 import {
   GET_WALLET_ADDRESS_ACTION_NAME,
+  GET_YIELD_POSITIONS_ACTION_NAME,
   LIST_YIELD_POOLS_ACTION_NAME,
   PREPARE_REBALANCE_ACTION_NAME,
   PREPARE_YIELD_DEPOSIT_ACTION_NAME,
   SWAP_THEN_DEPOSIT_ACTION_NAME,
 } from "./assistantFunctionSchemas";
+import { isYieldPositionsQuestion } from "./yieldPositionIntent";
 import { recordYieldOptimizationQuery, formatActivityCaption } from "./behaviorMemoryStore";
 import {
   getConversationContext,
@@ -51,6 +53,7 @@ function isWalletAddressQuestion(lower: string): boolean {
 
 function isPortfolioOrBalanceQuestion(lower: string): boolean {
   if (isWalletAddressQuestion(lower)) return false;
+  if (isYieldPositionsQuestion(lower)) return false;
   if (/\bnavi\b/.test(lower) && /\b(pool|pools|yield|apy|lend|deposit)\b/.test(lower)) {
     return false;
   }
@@ -127,9 +130,13 @@ function captionForBlocks(
     case "wallet_address":
       return `Active address on ${head.network} (${head.accountLabel}) — use copy on the card.`;
     case "rebalance_proposal":
-      return `Rebalance plan on ${head.network}: ${head.swaps.length} suggested swap leg(s) on the card — each swap still needs its own approval.`;
+      return head.executable
+        ? `Rebalance on ${head.network}: ${head.swaps.length} swap leg(s) in one PTB — approve on the card when ready.`
+        : `Rebalance plan on ${head.network}: ${head.swaps.length} suggested swap leg(s) on the card.`;
     case "composite_swap_then_deposit":
-      return "Staged swap then deposit: approve the swap on the card first; deposit uses the quoted receive amount as an estimate.";
+      return head.executionModel === "ptb"
+        ? "Single-transaction swap and Navi deposit — review steps on the card and approve once."
+        : "Staged swap then deposit: approve the swap first; deposit is estimated until the swap confirms.";
     case "send_proposal":
     case "swap_proposal":
     case "navi_deposit_proposal":
@@ -364,6 +371,28 @@ export async function planAssistantStructuredTurn(
     }
   }
 
+  if (isYieldPositionsQuestion(lower)) {
+    try {
+      const blocks = await executePackageAction({
+        accountId,
+        namespacedName: GET_YIELD_POSITIONS_ACTION_NAME,
+        input: {},
+      });
+      setConversationContext(accountId, chatId, { recentUserIntent: "yield_positions" });
+      if (shouldUseDeterministicAssistantReply(blocks)) {
+        return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
+      }
+      return {
+        mode: "llm",
+        blocks,
+        systemAddendum: "\n\n[A Navi yield positions card is shown. Summarize supplied amounts briefly; do not invent positions.]",
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not load yield positions.";
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+    }
+  }
+
   if (isPortfolioOrBalanceQuestion(lower)) {
     const tBal = performance.now();
     const balances = await assistantDataCache.getTokenBalances(accountId);
@@ -473,7 +502,9 @@ export async function planAssistantStructuredTurn(
             "\n\n[A Navi transaction review card is shown. Add at most one short sentence: note protocol/yield risks and that funds move only after the user approves the card.]";
         } else if (t === "composite_swap_then_deposit") {
           systemAddendum =
-            "\n\n[A staged swap→deposit card is shown. Note only the swap is executable first; deposit is estimated after the swap.]";
+            blocks[0].executionModel === "ptb"
+              ? "\n\n[A composite swap→deposit card is shown (single PTB). One short sentence; user must approve the card.]"
+              : "\n\n[A staged swap→deposit card is shown. Note only the swap runs first; deposit is estimated after the swap.]";
         } else if (t === "rebalance_proposal") {
           systemAddendum = "\n\n[A rebalance plan card is shown. Summarize briefly; swaps are not executed automatically.]";
         } else if (t === "trigger_proposal") {
@@ -535,7 +566,13 @@ export async function planAssistantStructuredTurn(
   }
 
   const maybeTargets = parseRebalanceTargets(text);
-  if (maybeTargets && /\brebalance|target\s+allocation|portfolio\s+mix|adjust\s+my\s+allocation\b/i.test(lower)) {
+  const isRebalanceWithTargets =
+    maybeTargets &&
+    (/\brebalance\b/i.test(lower) ||
+      /\btarget\s+allocation\b/i.test(lower) ||
+      /\bportfolio\s+mix\b/i.test(lower) ||
+      /\badjust\s+my\s+allocation\b/i.test(lower));
+  if (isRebalanceWithTargets) {
     try {
       const blocks = await executePackageAction({
         accountId,

@@ -1,5 +1,8 @@
-import { Transaction } from "@mysten/sui/transactions";
+import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import type { TransactionBuildContext } from "../../../../services/transactions/transactionContext";
+import { mergeProgrammableTransaction } from "../../../../services/transactions/ptbMerge";
+import { setAlias } from "../../../../services/transactions/transactionContext";
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
 import { decimalStringToRawAmount } from "../amount-utils";
 import { formatTokenAmount } from "./sui-balance.service";
@@ -132,20 +135,72 @@ function extractTxPayload(txBuildResult: unknown): string | null {
 /**
  * Turn Aftermath `transactions/trade` response into executable tx bytes (Expo-aligned).
  */
-async function txBytesFromTradeBuildResult(
+export async function transactionFromTradeBuildResult(
   txBuildResult: unknown,
   client: SuiJsonRpcClient,
-): Promise<Uint8Array> {
+): Promise<Transaction> {
   const raw =
     typeof txBuildResult === "string" ? txBuildResult : extractTxPayload(txBuildResult);
   if (!raw) {
     throw new Error("Could not build swap transaction for this network.");
   }
   if (isJsonTransaction(raw)) {
-    const tx = Transaction.from(raw);
-    return tx.build({ client });
+    return Transaction.from(raw);
   }
-  return Uint8Array.from(Buffer.from(raw, "base64"));
+  return Transaction.from(Uint8Array.from(Buffer.from(raw, "base64")));
+}
+
+async function txBytesFromTradeBuildResult(
+  txBuildResult: unknown,
+  client: SuiJsonRpcClient,
+): Promise<Uint8Array> {
+  const tx = await transactionFromTradeBuildResult(txBuildResult, client);
+  return tx.build({ client });
+}
+
+/**
+ * Merge an Aftermath swap PTB into a shared transaction and register the output coin alias.
+ */
+export async function appendAftermathSwapToTransaction(
+  ctx: TransactionBuildContext,
+  params: {
+    completeRoute: AftermathTradeRoute;
+    slippageBps: number;
+    outputAlias: string;
+  },
+): Promise<TransactionObjectArgument> {
+  const client = getSuiClientForEnvironment(ctx.suiEnvironment);
+  const slippage = params.slippageBps / 10_000;
+  console.info("[swap] building trade tx for PTB merge", {
+    slippageBps: params.slippageBps,
+    wallet: ctx.senderAddress.slice(0, 10),
+  });
+
+  const txBuildResult = await aftermathRouterRequest<unknown>({
+    env: ctx.suiEnvironment,
+    path: "transactions/trade",
+    body: {
+      walletAddress: ctx.senderAddress,
+      completeRoute: params.completeRoute,
+      slippage,
+    },
+  });
+
+  const swapTx = await transactionFromTradeBuildResult(txBuildResult, client);
+  const { outputCoins } = mergeProgrammableTransaction({
+    parent: ctx.tx,
+    child: swapTx,
+    senderAddress: ctx.senderAddress,
+    stripTerminalTransferToSender: true,
+  });
+
+  const primary = outputCoins[0];
+  if (!primary) {
+    throw new Error("[swap] Could not resolve swap output coin for composition.");
+  }
+  setAlias(ctx, params.outputAlias, primary);
+  console.info("[swap] output alias registered", params.outputAlias);
+  return primary;
 }
 
 export class SuiAftermathSwapService {

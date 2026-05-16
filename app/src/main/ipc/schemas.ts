@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { swapProposalSnapshotV1Schema } from "../../packages/core/swap/swap.schemas";
 import { naviYieldProposalSnapshotV1Schema } from "../../packages/core/yield/navi/navi.schemas";
 
 export const walletCreateSchema = z.object({
@@ -76,24 +77,7 @@ export const chainConfirmTransferSchema = z.object({
   transferRequestId: z.string().min(1).max(128),
 });
 
-export const swapProposalSnapshotV1Schema = z.object({
-  v: z.literal(1),
-  accountId: z.string().min(1).max(128),
-  suiEnvironment: suiEnvSchema,
-  walletAddress: z.string().min(1).max(256),
-  fromCoinType: z.string().min(1).max(512),
-  toCoinType: z.string().min(1).max(512),
-  fromSymbol: z.string().min(1).max(64),
-  toSymbol: z.string().min(1).max(64),
-  amountDisplay: z.string().min(1).max(64),
-  coinInAmountRaw: z.string().regex(/^\d+$/),
-  estimatedOutRaw: z.string().regex(/^\d+$/),
-  slippageBps: z.number().int().min(1).max(5000),
-  appFeeBps: z.number().int().min(0).max(10_000),
-  treasuryAddress: z.string().min(1).max(256).optional(),
-  quoteExpiresAtMs: z.number().int(),
-  completeRouteJson: z.string().min(1).max(4_000_000),
-});
+export { swapProposalSnapshotV1Schema };
 
 export const chainExecuteSwapSchema = z.object({
   accountId: z.string().min(1).max(128),
@@ -103,6 +87,39 @@ export const chainExecuteSwapSchema = z.object({
 export const chainExecuteNaviYieldSchema = z.object({
   accountId: z.string().min(1).max(128),
   proposalSnapshot: naviYieldProposalSnapshotV1Schema,
+});
+
+const rebalanceSwapLegSchema = z.object({
+  legId: z.string().uuid(),
+  fromSymbol: z.string().min(1).max(32),
+  toSymbol: z.string().min(1).max(32),
+  amountDisplay: z.string().min(1).max(64),
+  swapSnapshot: swapProposalSnapshotV1Schema,
+});
+
+export const rebalanceProposalSnapshotV1Schema = z.object({
+  v: z.literal(1),
+  proposalId: z.string().uuid(),
+  accountId: z.string().min(1).max(128),
+  suiEnvironment: suiEnvSchema,
+  walletAddress: z.string().min(1).max(256),
+  swapLegs: z.array(rebalanceSwapLegSchema).min(1).max(12),
+  preparedAtMs: z.number().int(),
+  expiresAtMs: z.number().int(),
+});
+
+import { compositeProposalSnapshotV1Schema } from "../../packages/runtime/composite/composite.schemas";
+
+export { compositeProposalSnapshotV1Schema };
+
+export const chainExecuteCompositeSchema = z.object({
+  accountId: z.string().min(1).max(128),
+  proposalSnapshot: compositeProposalSnapshotV1Schema,
+});
+
+export const chainExecuteRebalanceSchema = z.object({
+  accountId: z.string().min(1).max(128),
+  proposalSnapshot: rebalanceProposalSnapshotV1Schema,
 });
 
 const chainIdSchema = z.enum(["sui", "solana", "evm"]);

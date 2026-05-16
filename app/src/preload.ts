@@ -49,6 +49,8 @@ const api: DestrallApi = {
       ipcRenderer.invoke(IPCChannels.chainConfirmTransfer, payload),
     executeSwap: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteSwap, payload),
     executeNaviYield: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteNaviYield, payload),
+    executeComposite: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteComposite, payload),
+    executeRebalance: (payload) => ipcRenderer.invoke(IPCChannels.chainExecuteRebalance, payload),
     getDailyBriefChainBundle: (accountId: string) =>
       ipcRenderer.invoke(IPCChannels.chainGetDailyBriefBundle, accountId),
     publishDailyBriefMemory: (payload: { accountId: string; memory: DailyBriefAssistantMemoryPayload }) =>

@@ -17,6 +17,10 @@ import { enrichSuiBalancesWithAftermathUsd } from "./sui/sui-aftermath-prices.se
 import { fetchSuiActivityPage } from "./sui/sui-activity.service";
 import { SuiTransferService } from "./sui/sui-transfer.service";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
+import type { CompositeProposalSnapshotV1 } from "@packages/runtime/composite/compositeTypes";
+import type { RebalanceProposalSnapshotV1 } from "@packages/core/rebalance/rebalance.types";
+import { executeCompositeProposal } from "@packages/runtime/composite/compositeExecutor";
+import { executeRebalanceProposal } from "@packages/core/rebalance/rebalanceExecutor";
 import { suiAftermathSwapService } from "./sui/sui-aftermath-swap.service";
 
 class ChainFacadeService {
@@ -94,6 +98,20 @@ class ChainFacadeService {
 
   async confirmTransfer(params: { transferRequestId: string }): Promise<TransferExecuteResult> {
     return this.getTransferService().confirmTransfer(params);
+  }
+
+  async executeComposite(params: {
+    accountId: string;
+    proposalSnapshot: CompositeProposalSnapshotV1;
+  }): Promise<SwapExecuteResult> {
+    return executeCompositeProposal(params);
+  }
+
+  async executeRebalance(params: {
+    accountId: string;
+    proposalSnapshot: RebalanceProposalSnapshotV1;
+  }): Promise<SwapExecuteResult> {
+    return executeRebalanceProposal(params);
   }
 
   async executeAssistantSwap(params: {

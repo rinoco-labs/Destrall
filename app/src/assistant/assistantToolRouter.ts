@@ -6,6 +6,7 @@ import {
   GET_YIELD_POSITIONS_ACTION_NAME,
   PREPARE_YIELD_DEPOSIT_ACTION_NAME,
   PREPARE_YIELD_WITHDRAW_ACTION_NAME,
+  PREPARE_REBALANCE_ACTION_NAME,
   CREATE_TRIGGER_ACTION_NAME,
   LIST_TRIGGERS_ACTION_NAME,
   PAUSE_TRIGGER_ACTION_NAME,
@@ -18,6 +19,8 @@ import {
   parseTriggerManagementCommand,
 } from "../packages/core/triggers/triggerParser";
 import { hasScheduleIntent } from "../packages/core/triggers/scheduledTriggerParser";
+import { parseRebalanceTargets } from "../packages/core/rebalance/rebalancePlanner";
+import { isYieldPositionsQuestion } from "./yieldPositionIntent";
 
 export type RoutedAssistantToolCall = {
   namespacedName: string;
@@ -77,6 +80,22 @@ export function classifySwapUserMessage(text: string): SwapUserMessageClass {
 export function tryRouteAssistantToolCall(userText: string): RoutedAssistantToolCall | null {
   const text = normalizeUserText(userText);
   const lower = text.toLowerCase();
+
+  if (/\brebalance\b/i.test(lower) && /\d+\s*%/.test(lower)) {
+    const targets = parseRebalanceTargets(text);
+    if (targets) {
+      return { namespacedName: PREPARE_REBALANCE_ACTION_NAME, input: { distributionText: text } };
+    }
+  }
+
+  if (isYieldPositionsQuestion(lower)) {
+    const input: Record<string, unknown> = {};
+    const asset = text.match(/\b(?:for|only|in)\s+(\w{2,10})\b/i)?.[1];
+    if (asset && !/^(the|a|an|me|my|all|on|in|savings?|yield|navi)$/i.test(asset)) {
+      input.asset = asset.toUpperCase() === "SUI" ? "SUI" : asset;
+    }
+    return { namespacedName: GET_YIELD_POSITIONS_ACTION_NAME, input };
+  }
 
   if (isTriggerManagementCommand(text)) {
     const mgmt = parseTriggerManagementCommand(text);
@@ -201,24 +220,6 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
     else if (/\b(sort|order)\b.*\b(risk|safe|conservative)\b/i.test(lower)) input.sortBy = "risk";
     else if (/\b(sort|order)\b.*\bapy\b/i.test(lower)) input.sortBy = "apy";
     return { namespacedName: LIST_YIELD_POOLS_ACTION_NAME, input };
-  }
-
-  /** User’s Navi / yield positions (word-order and common typos). */
-  const asksYieldPositions =
-    /\b(what\s+(?:are\s+)?(?:my\s+|our\s+|the\s+)?yield\s+positions?|what\s+are\s+my\s+(?:positions?|postions)|my\s+(?:positions?|postions)\s+(?:on|in|with)\s+navi|(?:positions?|postions)\s+(?:on|in|with)\s+navi|navi\s+(?:positions?|postions)|my\s+navi\s+(?:positions?|postions)|show\s+my\s+navi|show\s+my\s+yield\s+(?:positions?|postions)|(?:do\s+i\s+have|have\s+i\s+got)\s+(?:any\s+)?yield\s+positions?|yield\s+positions?\s+(?:do\s+i\s+have|i\s+have)|what\s+am\s+i\s+earning|earning\s+interest\s+on|what\s+.*\b(?:positions?|postions)\b.*\bnavi\b|my\s+.*\b(?:positions?|postions)\b.*\bnavi\b)\b/i.test(
-      lower,
-    ) ||
-    (/\bnavi\b/i.test(lower) &&
-      /\b(?:positions?|postions|holdings?|supplied|supply\s+balance|what\s+i\s+have|what\s+do\s+i\s+have)\b/i.test(lower) &&
-      !asksYieldPools);
-
-  if (asksYieldPositions) {
-    const input: Record<string, unknown> = {};
-    const asset = text.match(/\b(?:for|only)\s+(\w{2,10})\b/i)?.[1];
-    if (asset && !/^(the|a|an|me|my|all|on|in)$/i.test(asset)) {
-      input.asset = asset.toUpperCase() === "SUI" ? "SUI" : asset;
-    }
-    return { namespacedName: GET_YIELD_POSITIONS_ACTION_NAME, input };
   }
 
   const depPct = text.match(

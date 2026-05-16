@@ -6,7 +6,9 @@ import {
   chainAccountIdSchema,
   chainActivitySchema,
   chainConfirmTransferSchema,
+  chainExecuteCompositeSchema,
   chainExecuteNaviYieldSchema,
+  chainExecuteRebalanceSchema,
   chainExecuteSwapSchema,
   chainPrepareTransferSchema,
   chainPublishDailyBriefMemorySchema,
@@ -194,6 +196,38 @@ export function registerChainIpcHandlers() {
         proposalSnapshot: NaviYieldProposalSnapshotV1;
       };
       const result = await suiNaviYieldService.executeApprovedProposal({ accountId, proposalSnapshot });
+      broadcastChainChanged();
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainExecuteComposite, async (_event, payload: unknown) => {
+    const parsed = chainExecuteCompositeSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid composite execution request"));
+    }
+    try {
+      const result = await chainFacadeService.executeComposite(
+        parsed.data as { accountId: string; proposalSnapshot: import("@packages/runtime/composite/compositeTypes").CompositeProposalSnapshotV1 },
+      );
+      broadcastChainChanged();
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  ipcMain.handle(IPCChannels.chainExecuteRebalance, async (_event, payload: unknown) => {
+    const parsed = chainExecuteRebalanceSchema.safeParse(payload);
+    if (!parsed.success) {
+      return fail(new Error(parsed.error.issues[0]?.message ?? "Invalid rebalance execution request"));
+    }
+    try {
+      const result = await chainFacadeService.executeRebalance(
+        parsed.data as { accountId: string; proposalSnapshot: import("@packages/core/rebalance/rebalance.types").RebalanceProposalSnapshotV1 },
+      );
       broadcastChainChanged();
       return ok(result);
     } catch (error) {

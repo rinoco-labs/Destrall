@@ -6,6 +6,11 @@
 import type { SendProposalSnapshot } from "../packages/runtime/transactionProposalTypes";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import type {
+  CompositeProposalSnapshotV1,
+  CompositeStepPreview,
+} from "@packages/runtime/composite/compositeTypes";
+import type { RebalanceProposalSnapshotV1 } from "@packages/core/rebalance/rebalance.types";
 import type { TriggerProposalSnapshotV1, TriggerCategory, TriggerStatus } from "@packages/core/triggers/triggers.types";
 
 export type AssistantAssetFlow = {
@@ -139,14 +144,16 @@ export type WalletAddressResult = {
   address: string;
 };
 
-/**
- * Staged swap then Navi deposit: only the embedded swap is executable today.
- * Deposit uses expected post-swap amount (approximate until swap confirms).
- */
+/** Swap + Navi deposit — single PTB on mainnet when possible. */
 export type CompositeSwapThenDepositResult = {
   type: "composite_swap_then_deposit";
   compositeId: string;
-  executionModel: "staged";
+  proposalId: string;
+  status: "pending" | "executing" | "success" | "failed" | "rejected";
+  executionModel: "ptb" | "staged";
+  steps: CompositeStepPreview[];
+  proposalSnapshot?: CompositeProposalSnapshotV1;
+  card: AssistantProposalCard;
   swapProposal: SwapProposalResult;
   depositPreview: {
     asset: string;
@@ -155,11 +162,15 @@ export type CompositeSwapThenDepositResult = {
     apyText?: string;
   };
   riskNotes: string[];
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
 };
 
 export type RebalanceProposalResult = {
   type: "rebalance_proposal";
   proposalId: string;
+  status?: "pending" | "executing" | "success" | "failed" | "rejected";
   network: string;
   currentPct: { symbol: string; pct: string; valueUsd?: string }[];
   targetPct: { symbol: string; pct: string }[];
@@ -167,6 +178,11 @@ export type RebalanceProposalResult = {
   gasNote?: string;
   dustSkipped?: string[];
   riskNotes: string[];
+  proposalSnapshot?: RebalanceProposalSnapshotV1;
+  executable?: boolean;
+  errorMessage?: string;
+  digest?: string;
+  explorerUrl?: string | null;
 };
 
 export type SwapExecutionResultResult = {

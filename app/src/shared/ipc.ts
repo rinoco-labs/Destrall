@@ -152,6 +152,14 @@ export type DestrallApi = {
       accountId: string;
       proposalSnapshot: NaviYieldProposalSnapshotV1;
     }) => Promise<RpcResult<SwapExecuteResult>>;
+    executeComposite: (payload: {
+      accountId: string;
+      proposalSnapshot: import("@packages/runtime/composite/compositeTypes").CompositeProposalSnapshotV1;
+    }) => Promise<RpcResult<SwapExecuteResult>>;
+    executeRebalance: (payload: {
+      accountId: string;
+      proposalSnapshot: import("@packages/core/rebalance/rebalance.types").RebalanceProposalSnapshotV1;
+    }) => Promise<RpcResult<SwapExecuteResult>>;
     getDailyBriefChainBundle: (accountId: string) => Promise<RpcResult<DailyBriefChainBundle>>;
     publishDailyBriefMemory: (payload: {
       accountId: string;
@@ -253,6 +261,8 @@ export const IPCChannels = {
   chainConfirmTransfer: "chain:confirm-transfer",
   chainExecuteSwap: "chain:execute-swap",
   chainExecuteNaviYield: "chain:execute-navi-yield",
+  chainExecuteComposite: "chain:execute-composite",
+  chainExecuteRebalance: "chain:execute-rebalance",
   chainGetDailyBriefBundle: "chain:get-daily-brief-bundle",
   chainPublishDailyBriefMemory: "chain:publish-daily-brief-memory",
   chainNetworkChanged: "chain:network-changed",

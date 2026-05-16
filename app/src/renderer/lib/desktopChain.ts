@@ -13,6 +13,8 @@ import type {
 } from "../../types/blockchain";
 import type { SwapProposalSnapshotV1 } from "@packages/core/swap/swap.types";
 import type { NaviYieldProposalSnapshotV1 } from "@packages/core/yield/navi/navi.types";
+import type { CompositeProposalSnapshotV1 } from "@packages/runtime/composite/compositeTypes";
+import type { RebalanceProposalSnapshotV1 } from "@packages/core/rebalance/rebalance.types";
 import type { ChainId } from "../../shared/wallet/types";
 import type { SuiChainEnvironment } from "../../config/chains/sui";
 
@@ -78,6 +80,20 @@ export async function desktopExecuteNaviYield(payload: {
   proposalSnapshot: NaviYieldProposalSnapshotV1;
 }): Promise<SwapExecuteResult> {
   return unwrap(api().chain.executeNaviYield(payload));
+}
+
+export async function desktopExecuteComposite(payload: {
+  accountId: string;
+  proposalSnapshot: CompositeProposalSnapshotV1;
+}): Promise<SwapExecuteResult> {
+  return unwrap(api().chain.executeComposite(payload));
+}
+
+export async function desktopExecuteRebalance(payload: {
+  accountId: string;
+  proposalSnapshot: RebalanceProposalSnapshotV1;
+}): Promise<SwapExecuteResult> {
+  return unwrap(api().chain.executeRebalance(payload));
 }
 
 export async function desktopGetDailyBriefChainBundle(accountId: string): Promise<DailyBriefChainBundle> {
