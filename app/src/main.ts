@@ -7,6 +7,8 @@ import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers"
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
 import { registerTriggersIpcHandlers } from "./main/ipc/registerTriggersIpcHandlers";
+import { registerBrowserIpcHandlers } from "./main/ipc/registerBrowserIpcHandlers";
+import { attachNativeBrowserToWindow } from "./main/browser/nativeBrowserViewManager";
 import { startTriggerScheduler } from "./packages/core/triggers/triggerScheduler";
 import { timezoneSettingsService } from "./services/time/timezone.service";
 import { aiModelMainService } from "./main/ai/aiModelMainService";
@@ -17,6 +19,7 @@ if (started) {
 }
 
 const createWindow = () => {
+  const guestPreload = path.join(__dirname, "preload-browser-guest.js");
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -24,6 +27,8 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      additionalArguments: [`--destrall-guest-preload=${guestPreload}`],
     },
   });
 
@@ -34,6 +39,8 @@ const createWindow = () => {
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
+
+  attachNativeBrowserToWindow(mainWindow, guestPreload);
 };
 
 app.whenReady().then(() => {
@@ -45,6 +52,7 @@ app.whenReady().then(() => {
   registerAiModelIpcHandlers();
   registerAssistantChatIpcHandlers();
   registerTriggersIpcHandlers();
+  registerBrowserIpcHandlers();
   startTriggerScheduler();
   void aiModelMainService.restoreFromPersistence().catch((err) => {
     console.error("[llm] Startup restore failed", err);

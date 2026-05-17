@@ -20,6 +20,7 @@
   "nav": {
     "home": "Home",
     "assistant": "Assistant",
+    "browser": "Browser",
     "store": "Store",
     "settings": "Settings",
     "developer": "Developer",

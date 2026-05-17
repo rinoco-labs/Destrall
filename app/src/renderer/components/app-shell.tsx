@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  Globe,
   Home,
   MessageSquareText,
   // Store,
@@ -18,7 +19,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { colorClass, getInitial } from "@/stores/accountsStore";
 import { useWalletStore } from "@/stores/walletStore";
 
-type NavKey = "home" | "assistant" | "store" | "settings" | "developer";
+type NavKey = "home" | "assistant" | "browser" | "store" | "settings" | "developer";
 
 type NavItem = {
   key: NavKey;
@@ -30,6 +31,7 @@ type NavItem = {
 const TOP_NAV: NavItem[] = [
   { key: "home", i18nKey: "nav.home", to: "/home", icon: Home },
   { key: "assistant", i18nKey: "nav.assistant", to: "/assistant", icon: MessageSquareText },
+  { key: "browser", i18nKey: "nav.browser", to: "/browser", icon: Globe },
   // { key: "store", i18nKey: "nav.store", to: "/store", icon: Store },
 ];
 
@@ -41,10 +43,13 @@ const SIDE_NAV: NavItem[] = [
 export function AppShell({
   children,
   active,
+  layout = "default",
 }: {
   children: React.ReactNode;
   active: NavKey;
+  layout?: "default" | "browser";
 }) {
+  const isBrowserLayout = layout === "browser";
   const { theme, toggle } = useTheme();
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
@@ -251,8 +256,18 @@ export function AppShell({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-6 sm:px-8 pb-6 sm:pb-8">
-          <div className="max-w-5xl mx-auto w-full">{children}</div>
+        <div
+          className={
+            isBrowserLayout
+              ? "flex flex-1 flex-col min-h-0 overflow-hidden"
+              : "flex-1 overflow-y-auto px-6 sm:px-8 pb-6 sm:pb-8"
+          }
+        >
+          {isBrowserLayout ? (
+            children
+          ) : (
+            <div className="max-w-5xl mx-auto w-full">{children}</div>
+          )}
         </div>
       </section>
 

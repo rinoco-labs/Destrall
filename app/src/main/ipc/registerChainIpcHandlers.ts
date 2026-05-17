@@ -27,6 +27,7 @@ import { assistantDataCache } from "../../assistant/cache/assistantDataCache";
 import { readStoredYieldRiskProfile } from "../../packages/core/yield/navi/navi-risk.service";
 import { contactRepository } from "../persistence/repositories/contactRepository";
 import { SUPPORTED_CHAIN_DESCRIPTORS } from "../../config/networks";
+import { getNativeBrowserManager } from "../browser/nativeBrowserViewManager";
 import type { DailyBriefAssistantMemoryPayload } from "../../shared/dailyBriefMemory";
 
 function ok<T>(data: T) {
@@ -70,6 +71,7 @@ export function registerChainIpcHandlers() {
     try {
       chainFacadeService.setActiveChain(parsed.data.activeChain);
       chainFacadeService.setSuiNetwork(parsed.data.suiEnvironment);
+      getNativeBrowserManager()?.refreshWalletInjection();
       broadcastChainChanged();
       return ok(networkPayload());
     } catch (error) {

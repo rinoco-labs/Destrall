@@ -19,6 +19,7 @@ import { Route as HomeRouteImport } from './routes/home'
 import { Route as DeveloperRouteImport } from './routes/developer'
 import { Route as DailyBriefRouteImport } from './routes/daily-brief'
 import { Route as ContactsRouteImport } from './routes/contacts'
+import { Route as BrowserRouteImport } from './routes/browser'
 import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as AssistantToolsRouteImport } from './routes/assistant-tools'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
@@ -81,6 +82,11 @@ const AssistantRoute = AssistantRouteImport.update({
   path: '/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BrowserRoute = BrowserRouteImport.update({
+  id: '/browser',
+  path: '/browser',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AssistantToolsRoute = AssistantToolsRouteImport.update({
   id: '/assistant-tools',
   path: '/assistant-tools',
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/browser': typeof BrowserRoute
   '/assistant-tools': typeof AssistantToolsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/browser': typeof BrowserRoute
   '/assistant-tools': typeof AssistantToolsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/assistant': typeof AssistantRoute
+  '/browser': typeof BrowserRoute
   '/assistant-tools': typeof AssistantToolsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/contacts': typeof ContactsRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/browser'
     | '/assistant-tools'
     | '/how-it-works'
     | '/contacts'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/browser'
     | '/assistant-tools'
     | '/how-it-works'
     | '/contacts'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/assistant'
+    | '/browser'
     | '/assistant-tools'
     | '/how-it-works'
     | '/contacts'
@@ -223,6 +235,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
   AssistantRoute: typeof AssistantRoute
+  BrowserRoute: typeof BrowserRoute
   AssistantToolsRoute: typeof AssistantToolsRoute
   HowItWorksRoute: typeof HowItWorksRoute
   ContactsRoute: typeof ContactsRoute
@@ -317,6 +330,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/browser': {
+      id: '/browser'
+      path: '/browser'
+      fullPath: '/browser'
+      preLoaderRoute: typeof BrowserRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assistant-tools': {
       id: '/assistant-tools'
       path: '/assistant-tools'
@@ -359,6 +379,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
   AssistantRoute: AssistantRoute,
+  BrowserRoute: BrowserRoute,
   AssistantToolsRoute: AssistantToolsRoute,
   HowItWorksRoute: HowItWorksRoute,
   ContactsRoute: ContactsRoute,

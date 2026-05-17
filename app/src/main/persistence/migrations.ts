@@ -42,6 +42,20 @@ const migrations: Migration[] = [
       ensureTriggerTables(db);
     },
   },
+  {
+    version: 6,
+    name: "browser_dapp",
+    up: (db) => {
+      ensureBrowserTables(db);
+    },
+  },
+  {
+    version: 7,
+    name: "browser_strip_legacy_fk",
+    up: (db) => {
+      stripBrowserTablesForeignKeys(db);
+    },
+  },
 ];
 
 export function ensureAssistantChatTables(db: DatabaseSync) {
@@ -318,6 +332,199 @@ export function runMigrations(db: DatabaseSync) {
   ensureAssistantChatTables(db);
   ensureContactsTable(db);
   ensureTriggerTables(db);
+  ensureBrowserTables(db);
+}
+
+function tableHasForeignKeys(db: DatabaseSync, table: string): boolean {
+  if (!tableExists(db, table)) return false;
+  const rows = db.prepare(`PRAGMA foreign_key_list(${table})`).all() as unknown[];
+  return rows.length > 0;
+}
+
+/**
+ * App-copy / fork DBs may reference `wallets(id)` while Destrall uses `wallet_accounts(id)`.
+ * Rebuild browser tables without FK constraints so dapp connect approval can persist state.
+ */
+export function stripBrowserTablesForeignKeys(db: DatabaseSync) {
+  const browserTables = ["browser_tabs", "browser_history", "connected_dapps"];
+  if (!browserTables.some((name) => tableHasForeignKeys(db, name))) return;
+
+  console.warn(
+    "[migrations] Rebuilding browser tables without foreign keys (legacy app-copy schema used REFERENCES wallets).",
+  );
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (tableHasForeignKeys(db, "browser_tabs") && tableExists(db, "browser_tabs")) {
+      const rows = db.prepare(`SELECT * FROM browser_tabs`).all() as Record<string, unknown>[];
+      db.exec(`DROP TABLE IF EXISTS browser_tabs__fkstrip`);
+      db.exec(`
+        CREATE TABLE browser_tabs__fkstrip (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL DEFAULT '',
+          favicon TEXT NOT NULL DEFAULT '',
+          nav_history_json TEXT NOT NULL DEFAULT '[]',
+          nav_index INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        ) STRICT;
+      `);
+      const insert = db.prepare(`
+        INSERT INTO browser_tabs__fkstrip
+        (id, account_id, url, title, favicon, nav_history_json, nav_index, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const r of rows) {
+        insert.run(
+          String(r.id ?? ""),
+          String(r.account_id ?? ""),
+          String(r.url ?? ""),
+          String(r.title ?? ""),
+          String(r.favicon ?? ""),
+          String(r.nav_history_json ?? "[]"),
+          Number(r.nav_index) || 0,
+          Number(r.created_at) || Date.now(),
+          Number(r.updated_at) || Date.now(),
+        );
+      }
+      db.exec(`DROP TABLE browser_tabs`);
+      db.exec(`ALTER TABLE browser_tabs__fkstrip RENAME TO browser_tabs`);
+    }
+
+    if (tableHasForeignKeys(db, "browser_history") && tableExists(db, "browser_history")) {
+      const rows = db.prepare(`SELECT * FROM browser_history`).all() as Record<string, unknown>[];
+      db.exec(`DROP TABLE IF EXISTS browser_history__fkstrip`);
+      db.exec(`
+        CREATE TABLE browser_history__fkstrip (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL DEFAULT '',
+          domain TEXT NOT NULL DEFAULT '',
+          timestamp INTEGER NOT NULL
+        ) STRICT;
+      `);
+      const insert = db.prepare(`
+        INSERT INTO browser_history__fkstrip (id, account_id, url, title, domain, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const r of rows) {
+        insert.run(
+          String(r.id ?? ""),
+          String(r.account_id ?? ""),
+          String(r.url ?? ""),
+          String(r.title ?? ""),
+          String(r.domain ?? ""),
+          Number(r.timestamp) || Date.now(),
+        );
+      }
+      db.exec(`DROP TABLE browser_history`);
+      db.exec(`ALTER TABLE browser_history__fkstrip RENAME TO browser_history`);
+    }
+
+    if (tableHasForeignKeys(db, "connected_dapps") && tableExists(db, "connected_dapps")) {
+      const rows = db.prepare(`SELECT * FROM connected_dapps`).all() as Record<string, unknown>[];
+      db.exec(`DROP TABLE IF EXISTS connected_dapps__fkstrip`);
+      db.exec(`
+        CREATE TABLE connected_dapps__fkstrip (
+          account_id TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          display_name TEXT NOT NULL DEFAULT '',
+          favicon TEXT NOT NULL DEFAULT '',
+          accounts_json TEXT NOT NULL DEFAULT '[]',
+          network TEXT NOT NULL DEFAULT '',
+          permissions_json TEXT NOT NULL DEFAULT '[]',
+          status TEXT NOT NULL DEFAULT 'connected',
+          first_connected INTEGER NOT NULL,
+          last_used INTEGER NOT NULL,
+          PRIMARY KEY (account_id, origin)
+        ) STRICT;
+      `);
+      const insert = db.prepare(`
+        INSERT INTO connected_dapps__fkstrip
+        (account_id, origin, display_name, favicon, accounts_json, network, permissions_json, status, first_connected, last_used)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const r of rows) {
+        insert.run(
+          String(r.account_id ?? ""),
+          String(r.origin ?? ""),
+          String(r.display_name ?? ""),
+          String(r.favicon ?? ""),
+          String(r.accounts_json ?? "[]"),
+          String(r.network ?? ""),
+          String(r.permissions_json ?? "[]"),
+          String(r.status ?? "connected"),
+          Number(r.first_connected) || Date.now(),
+          Number(r.last_used) || Date.now(),
+        );
+      }
+      db.exec(`DROP TABLE connected_dapps`);
+      db.exec(`ALTER TABLE connected_dapps__fkstrip RENAME TO connected_dapps`);
+    }
+
+    db.exec("COMMIT");
+  } catch (e) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+}
+
+export function ensureBrowserTables(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS browser_tabs (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      favicon TEXT NOT NULL DEFAULT '',
+      nav_history_json TEXT NOT NULL DEFAULT '[]',
+      nav_index INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS browser_history (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      domain TEXT NOT NULL DEFAULT '',
+      timestamp INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS connected_dapps (
+      account_id TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      display_name TEXT NOT NULL DEFAULT '',
+      favicon TEXT NOT NULL DEFAULT '',
+      accounts_json TEXT NOT NULL DEFAULT '[]',
+      network TEXT NOT NULL DEFAULT '',
+      permissions_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'connected',
+      first_connected INTEGER NOT NULL,
+      last_used INTEGER NOT NULL,
+      PRIMARY KEY (account_id, origin)
+    ) STRICT;
+    CREATE TABLE IF NOT EXISTS dapp_origin_permissions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      chain TEXT NOT NULL,
+      permissions_json TEXT NOT NULL,
+      connected_at INTEGER NOT NULL,
+      last_used_at INTEGER NOT NULL,
+      UNIQUE(account_id, origin, chain)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_browser_tabs_account_id ON browser_tabs(account_id);
+    CREATE INDEX IF NOT EXISTS idx_browser_history_account_id ON browser_history(account_id);
+    CREATE INDEX IF NOT EXISTS idx_dapp_origin_permissions_account ON dapp_origin_permissions(account_id);
+  `);
+  stripBrowserTablesForeignKeys(db);
 }
 
 export function ensureTriggerTables(db: DatabaseSync) {

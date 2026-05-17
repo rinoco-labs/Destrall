@@ -16,6 +16,17 @@ import type { YieldRiskProfile } from "@packages/core/yield/navi/navi-risk.heuri
 import type { DailyBriefAssistantMemoryPayload } from "./dailyBriefMemory";
 import type { TriggerExecutionRecord, TriggerRecord } from "@packages/core/triggers/triggers.types";
 import type { TriggerProposalSnapshotV1 } from "@packages/core/triggers/triggers.types";
+import type {
+  BrowserPersistedState,
+  DestrallWalletBridgeRequest,
+  NativeBrowserViewportBounds,
+} from "../browser/types/browser.types";
+import type {
+  SuiSignAndExecuteResult,
+  SuiSignPersonalMessageResult,
+  SuiSignTransactionResult,
+  WalletStandardConnectResult,
+} from "../browser/types/walletStandard.types";
 
 export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -223,6 +234,82 @@ export type DestrallApi = {
       pickedMatchId: string;
     }) => Promise<RpcResult<AssistantMessageRow>>;
   };
+  nativeBrowser: {
+    setViewportBounds: (payload: NativeBrowserViewportBounds) => Promise<RpcResult<{ ok: true }>>;
+    setVisible: (visible: boolean) => Promise<RpcResult<{ ok: true }>>;
+    navigate: (url: string) => Promise<RpcResult<{ ok: true }>>;
+    goBack: () => Promise<RpcResult<{ ok: true }>>;
+    goForward: () => Promise<RpcResult<{ ok: true }>>;
+    reload: () => Promise<RpcResult<{ ok: true }>>;
+    resolveWalletRequest: (payload: {
+      id: string;
+      result?: unknown;
+      error?: string;
+    }) => Promise<RpcResult<{ ok: true }>>;
+    persistAuthorizedAccounts: (payload: {
+      origin: string;
+      chain: "sui" | "solana";
+      accounts: WalletStandardConnectResult["accounts"];
+    }) => Promise<RpcResult<{ ok: true }>>;
+    clearAuthorizedAccounts: (payload: { origin: string }) => Promise<RpcResult<{ ok: true }>>;
+    onDidNavigate: (listener: (payload: { url: string }) => void) => () => void;
+    onLoadingState: (listener: (payload: { isLoading: boolean }) => void) => () => void;
+    onWalletRequest: (listener: (payload: DestrallWalletBridgeRequest) => void) => () => void;
+  };
+  browser: {
+    getState: (accountId: string) => Promise<RpcResult<BrowserPersistedState>>;
+    replaceState: (payload: {
+      accountId: string;
+      state: BrowserPersistedState;
+    }) => Promise<RpcResult<BrowserPersistedState>>;
+    authorizeDapp: (payload: {
+      accountId: string;
+      origin: string;
+      displayName: string;
+      accountAddress: string;
+      network: string;
+      permissions: ("viewAccount" | "signMessage" | "signTransaction" | "executeTransaction")[];
+    }) => Promise<RpcResult<BrowserPersistedState>>;
+  };
+  browserWallet: {
+    connect: (payload: {
+      accountId: string;
+      origin: string;
+      chain: "sui" | "solana";
+      silent?: boolean;
+    }) => Promise<RpcResult<WalletStandardConnectResult>>;
+    disconnect: (payload: {
+      accountId: string;
+      origin: string;
+      chain: "sui" | "solana";
+    }) => Promise<RpcResult<{ ok: true }>>;
+    signPersonalMessage: (payload: {
+      accountId: string;
+      origin: string;
+      messageBase64: string;
+    }) => Promise<RpcResult<SuiSignPersonalMessageResult>>;
+    signTransaction: (payload: {
+      accountId: string;
+      origin: string;
+      txDataJson: string;
+    }) => Promise<RpcResult<SuiSignTransactionResult>>;
+    signAndExecuteTransaction: (payload: {
+      accountId: string;
+      origin: string;
+      txDataJson: string;
+    }) => Promise<RpcResult<SuiSignAndExecuteResult>>;
+    previewTransaction: (payload: {
+      accountId: string;
+      txDataJson: string;
+    }) => Promise<
+      RpcResult<{
+        ok: boolean;
+        gasEstimate?: string;
+        errorMessage?: string;
+        balanceChanges?: { coinType: string; amount: string; owner?: string }[];
+      }>
+    >;
+  };
   triggers: {
     list: (accountId: string) => Promise<RpcResult<TriggerRecord[]>>;
     approve: (payload: {
@@ -293,6 +380,28 @@ export const IPCChannels = {
   assistantChatGetActive: "assistant-chat:get-active",
   assistantChatSetActive: "assistant-chat:set-active",
   assistantChatResolveContactDisambiguation: "assistant-chat:resolve-contact-disambiguation",
+  nativeBrowserSetViewportBounds: "native-browser:set-viewport-bounds",
+  nativeBrowserSetVisible: "native-browser:set-visible",
+  nativeBrowserNavigate: "native-browser:navigate",
+  nativeBrowserGoBack: "native-browser:go-back",
+  nativeBrowserGoForward: "native-browser:go-forward",
+  nativeBrowserReload: "native-browser:reload",
+  nativeBrowserResolveWalletRequest: "native-browser:resolve-wallet-request",
+  nativeBrowserPersistAuthorizedAccounts: "native-browser:persist-authorized-accounts",
+  nativeBrowserClearAuthorizedAccounts: "native-browser:clear-authorized-accounts",
+  nativeBrowserDidNavigate: "native-browser:did-navigate",
+  nativeBrowserLoadingState: "native-browser:loading-state",
+  nativeBrowserWalletRequest: "native-browser:wallet-request",
+  nativeBrowserWalletResponse: "native-browser:wallet-response",
+  browserGetState: "browser:get-state",
+  browserReplaceState: "browser:replace-state",
+  browserAuthorizeDapp: "browser:authorize-dapp",
+  browserWalletConnect: "browser-wallet:connect",
+  browserWalletDisconnect: "browser-wallet:disconnect",
+  browserWalletSignPersonalMessage: "browser-wallet:sign-personal-message",
+  browserWalletSignTransaction: "browser-wallet:sign-transaction",
+  browserWalletSignAndExecute: "browser-wallet:sign-and-execute",
+  browserPreviewTransaction: "browser-wallet:preview-transaction",
   triggersList: "triggers:list",
   triggersApprove: "triggers:approve",
   triggersPause: "triggers:pause",

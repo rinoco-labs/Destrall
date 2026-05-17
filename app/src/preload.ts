@@ -137,6 +137,53 @@ const api: DestrallApi = {
       pickedMatchId: string;
     }) => ipcRenderer.invoke(IPCChannels.assistantChatResolveContactDisambiguation, payload),
   },
+  nativeBrowser: {
+    setViewportBounds: (payload) =>
+      ipcRenderer.invoke(IPCChannels.nativeBrowserSetViewportBounds, payload),
+    setVisible: (visible) => ipcRenderer.invoke(IPCChannels.nativeBrowserSetVisible, visible),
+    navigate: (url) => ipcRenderer.invoke(IPCChannels.nativeBrowserNavigate, url),
+    goBack: () => ipcRenderer.invoke(IPCChannels.nativeBrowserGoBack),
+    goForward: () => ipcRenderer.invoke(IPCChannels.nativeBrowserGoForward),
+    reload: () => ipcRenderer.invoke(IPCChannels.nativeBrowserReload),
+    resolveWalletRequest: (payload) =>
+      ipcRenderer.invoke(IPCChannels.nativeBrowserResolveWalletRequest, payload),
+    persistAuthorizedAccounts: (payload) =>
+      ipcRenderer.invoke(IPCChannels.nativeBrowserPersistAuthorizedAccounts, payload),
+    clearAuthorizedAccounts: (payload) =>
+      ipcRenderer.invoke(IPCChannels.nativeBrowserClearAuthorizedAccounts, payload),
+    onDidNavigate: (listener) => {
+      const wrapped = (_: unknown, data: { url: string }) => listener(data);
+      ipcRenderer.on(IPCChannels.nativeBrowserDidNavigate, wrapped);
+      return () => ipcRenderer.removeListener(IPCChannels.nativeBrowserDidNavigate, wrapped);
+    },
+    onLoadingState: (listener) => {
+      const wrapped = (_: unknown, data: { isLoading: boolean }) => listener(data);
+      ipcRenderer.on(IPCChannels.nativeBrowserLoadingState, wrapped);
+      return () => ipcRenderer.removeListener(IPCChannels.nativeBrowserLoadingState, wrapped);
+    },
+    onWalletRequest: (listener) => {
+      const wrapped = (_: unknown, data: import("./browser/types/browser.types").DestrallWalletBridgeRequest) =>
+        listener(data);
+      ipcRenderer.on(IPCChannels.nativeBrowserWalletRequest, wrapped);
+      return () => ipcRenderer.removeListener(IPCChannels.nativeBrowserWalletRequest, wrapped);
+    },
+  },
+  browser: {
+    getState: (accountId) => ipcRenderer.invoke(IPCChannels.browserGetState, { accountId }),
+    replaceState: (payload) => ipcRenderer.invoke(IPCChannels.browserReplaceState, payload),
+    authorizeDapp: (payload) => ipcRenderer.invoke(IPCChannels.browserAuthorizeDapp, payload),
+  },
+  browserWallet: {
+    connect: (payload) => ipcRenderer.invoke(IPCChannels.browserWalletConnect, payload),
+    disconnect: (payload) => ipcRenderer.invoke(IPCChannels.browserWalletDisconnect, payload),
+    signPersonalMessage: (payload) =>
+      ipcRenderer.invoke(IPCChannels.browserWalletSignPersonalMessage, payload),
+    signTransaction: (payload) => ipcRenderer.invoke(IPCChannels.browserWalletSignTransaction, payload),
+    signAndExecuteTransaction: (payload) =>
+      ipcRenderer.invoke(IPCChannels.browserWalletSignAndExecute, payload),
+    previewTransaction: (payload) =>
+      ipcRenderer.invoke(IPCChannels.browserPreviewTransaction, payload),
+  },
   triggers: {
     list: (accountId: string) => ipcRenderer.invoke(IPCChannels.triggersList, { accountId }),
     approve: (payload: { accountId: string; proposalSnapshot: import("./packages/core/triggers/triggers.types").TriggerProposalSnapshotV1 }) =>
