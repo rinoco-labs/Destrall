@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { BrowserHeader } from "../../browser/components/BrowserHeader";
+import { BrowserHomeScreen } from "../../browser/components/BrowserHomeScreen";
 import { BrowserTabs, type BrowserTabItem } from "../../browser/components/BrowserTabs";
 import { BrowserWebView } from "../../browser/components/BrowserWebView";
 import { DappApprovalModal } from "../../browser/components/DappApprovalModal";
+import { BROWSER_HOME_URL, BROWSER_SEARCH_PLACEHOLDER } from "../../browser/constants";
 import { useBrowserWalletBridge } from "../../browser/hooks/useBrowserWalletBridge";
 import type { BrowserPersistedState, BrowserTab } from "../../browser/types/browser.types";
+import {
+  toggleBrowserFavorite,
+  toggleBrowserFavoritePin,
+} from "../../browser/utils/browserFavorites";
+import { appendBrowserHistoryItem } from "../../browser/utils/browserHistory";
+import {
+  isBrowserHomeUrl,
+  isNavigableWebUrl,
+  normalizeBrowserUrlInput,
+} from "../../browser/utils/browserNavigation";
 import {
   desktopBrowserGetState,
   desktopBrowserReplaceState,
@@ -19,19 +31,17 @@ import {
   subscribeNativeBrowserDidNavigate,
   subscribeNativeBrowserLoading,
 } from "@/lib/desktopBrowser";
+import { useNetworkStore } from "@/stores/networkStore";
 import { useWalletStore } from "@/stores/walletStore";
+import { getBrowserDappCatalog } from "../../config/browser/chains";
+import type { ChainId } from "../../shared/wallet/types";
 
-const DEFAULT_URL = "https://sui.io";
+type BrowserPersistedMeta = Pick<
+  BrowserPersistedState,
+  "history" | "connectedDapps" | "favorites"
+>;
 
-function normalizeUrlInput(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return DEFAULT_URL;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (trimmed.includes(".") && !trimmed.includes(" ")) return `https://${trimmed}`;
-  return `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`;
-}
-
-function newTab(url = DEFAULT_URL): BrowserTabItem {
+function newTab(url = BROWSER_HOME_URL): BrowserTabItem {
   return {
     id: crypto.randomUUID(),
     url,
@@ -50,6 +60,10 @@ function toPersistedTab(tab: BrowserTabItem): BrowserTab {
   };
 }
 
+function activeChainId(network: { activeChain: ChainId } | null, accountChain?: ChainId): ChainId {
+  return network?.activeChain ?? accountChain ?? "sui";
+}
+
 export const Route = createFileRoute("/browser")({
   component: BrowserPage,
   head: () => ({
@@ -64,21 +78,48 @@ function BrowserPage() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const chromeRef = useRef<HTMLDivElement>(null);
   const activeAccountId = useWalletStore((s) => s.activeAccountId);
+  const accounts = useWalletStore((s) => s.accounts);
+  const network = useNetworkStore((s) => s.network);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedRef = useRef(false);
+  const persistedMetaRef = useRef<BrowserPersistedMeta>({
+    history: [],
+    connectedDapps: [],
+    favorites: [],
+  });
 
   const [tabs, setTabs] = useState<BrowserTabItem[]>(() => [newTab()]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]?.id ?? "");
-  const [urlInput, setUrlInput] = useState(DEFAULT_URL);
+  const [urlInput, setUrlInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [persistedMeta, setPersistedMeta] = useState<Pick<BrowserPersistedState, "history" | "connectedDapps">>({
+  const [persistedMeta, setPersistedMeta] = useState<BrowserPersistedMeta>({
     history: [],
     connectedDapps: [],
+    favorites: [],
   });
 
-  const { pending, busy, activeAccount, networkLabel, approvePending, rejectPending } =
+  const activeAccount = accounts.find((a) => a.id === activeAccountId) ?? accounts[0];
+  const chainId = activeChainId(network, activeAccount?.chain);
+  const chainLabel = getBrowserDappCatalog(chainId).label;
+
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0],
+    [activeTabId, tabs],
+  );
+  const showHome = activeTab ? isBrowserHomeUrl(activeTab.url) : true;
+
+  const { pending, busy, activeAccount: bridgeAccount, networkLabel, approvePending, rejectPending } =
     useBrowserWalletBridge();
+
+  const connectedOrigins = useMemo(
+    () => persistedMeta.connectedDapps.map((dapp) => dapp.origin),
+    [persistedMeta.connectedDapps],
+  );
+
+  useEffect(() => {
+    persistedMetaRef.current = persistedMeta;
+  }, [persistedMeta]);
 
   const syncBounds = useCallback(() => {
     const el = viewportRef.current;
@@ -103,21 +144,22 @@ function BrowserPage() {
     if (!pending) scheduleSyncBounds();
   }, [pending, scheduleSyncBounds]);
 
-  const persistTabs = useCallback(
-    (nextTabs: BrowserTabItem[], nextActiveId: string) => {
+  const persistBrowserState = useCallback(
+    (nextTabs: BrowserTabItem[], nextActiveId: string, meta = persistedMetaRef.current) => {
       if (!activeAccountId || !hydratedRef.current) return;
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       persistTimerRef.current = setTimeout(() => {
         const state: BrowserPersistedState = {
           tabs: nextTabs.map(toPersistedTab),
           activeTabId: nextActiveId,
-          history: persistedMeta.history,
-          connectedDapps: persistedMeta.connectedDapps,
+          history: meta.history,
+          connectedDapps: meta.connectedDapps,
+          favorites: meta.favorites,
         };
         void desktopBrowserReplaceState(activeAccountId, state).catch(() => undefined);
       }, 400);
     },
-    [activeAccountId, persistedMeta.connectedDapps, persistedMeta.history],
+    [activeAccountId],
   );
 
   const updateActiveTabUrl = useCallback(
@@ -126,18 +168,51 @@ function BrowserPage() {
         const next = prev.map((tab) =>
           tab.id === activeTabId ? { ...tab, url, title: title ?? tab.title } : tab,
         );
-        persistTabs(next, activeTabId);
+        persistBrowserState(next, activeTabId);
         return next;
       });
     },
-    [activeTabId, persistTabs],
+    [activeTabId, persistBrowserState],
+  );
+
+  const navigateActiveTabTo = useCallback(
+    async (rawUrl: string, title?: string) => {
+      const next = normalizeBrowserUrlInput(rawUrl);
+      setLoadError(null);
+      setUrlInput(isBrowserHomeUrl(next) ? "" : next);
+      updateActiveTabUrl(next, title);
+
+      if (isBrowserHomeUrl(next)) {
+        await desktopNativeBrowserSetVisible(false);
+        return;
+      }
+
+      const nextMeta: BrowserPersistedMeta = {
+        ...persistedMetaRef.current,
+        history: appendBrowserHistoryItem(persistedMetaRef.current.history, next, title),
+      };
+      persistedMetaRef.current = nextMeta;
+      setPersistedMeta(nextMeta);
+      setTabs((prev) => {
+        persistBrowserState(prev, activeTabId, nextMeta);
+        return prev;
+      });
+
+      await desktopNativeBrowserSetVisible(true);
+      try {
+        await desktopNativeBrowserNavigate(next);
+        scheduleSyncBounds();
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : "Navigation failed");
+      }
+    },
+    [activeTabId, persistBrowserState, scheduleSyncBounds, updateActiveTabUrl],
   );
 
   useLayoutEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        await desktopNativeBrowserSetVisible(true);
         if (!cancelled) scheduleSyncBounds();
       } catch (err) {
         if (!cancelled) {
@@ -164,10 +239,14 @@ function BrowserPage() {
     hydratedRef.current = false;
     void desktopBrowserGetState(activeAccountId)
       .then((state) => {
-        setPersistedMeta({
+        const meta: BrowserPersistedMeta = {
           history: state.history,
           connectedDapps: state.connectedDapps,
-        });
+          favorites: state.favorites ?? [],
+        };
+        persistedMetaRef.current = meta;
+        setPersistedMeta(meta);
+
         const restored =
           state.tabs.length > 0
             ? state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
@@ -176,18 +255,22 @@ function BrowserPage() {
           state.activeTabId && restored.some((tab) => tab.id === state.activeTabId)
             ? state.activeTabId
             : restored[0].id;
-        const activeTab = restored.find((tab) => tab.id === activeId) ?? restored[0];
+        const active = restored.find((tab) => tab.id === activeId) ?? restored[0];
         setTabs(restored);
         setActiveTabId(activeId);
-        setUrlInput(activeTab.url);
-        return desktopNativeBrowserNavigate(normalizeUrlInput(activeTab.url));
+        setUrlInput(isBrowserHomeUrl(active.url) ? "" : active.url);
+
+        if (isBrowserHomeUrl(active.url)) {
+          return desktopNativeBrowserSetVisible(false);
+        }
+        return desktopNativeBrowserNavigate(normalizeBrowserUrlInput(active.url));
       })
       .catch(() => {
         const fallback = newTab();
         setTabs([fallback]);
         setActiveTabId(fallback.id);
-        setUrlInput(fallback.url);
-        return desktopNativeBrowserNavigate(fallback.url);
+        setUrlInput("");
+        return desktopNativeBrowserSetVisible(false);
       })
       .finally(() => {
         hydratedRef.current = true;
@@ -196,10 +279,32 @@ function BrowserPage() {
   }, [activeAccountId, scheduleSyncBounds]);
 
   useEffect(() => {
+    if (!hydratedRef.current || pending) return;
+    if (showHome) {
+      void desktopNativeBrowserSetVisible(false);
+    } else {
+      void desktopNativeBrowserSetVisible(true);
+      scheduleSyncBounds();
+    }
+  }, [pending, scheduleSyncBounds, showHome]);
+
+  useEffect(() => {
     const unsubNav = subscribeNativeBrowserDidNavigate((url) => {
+      if (!isNavigableWebUrl(url)) return;
       setUrlInput(url);
       setLoadError(null);
       updateActiveTabUrl(url);
+
+      const nextMeta: BrowserPersistedMeta = {
+        ...persistedMetaRef.current,
+        history: appendBrowserHistoryItem(persistedMetaRef.current.history, url),
+      };
+      persistedMetaRef.current = nextMeta;
+      setPersistedMeta(nextMeta);
+      setTabs((prev) => {
+        persistBrowserState(prev, activeTabId, nextMeta);
+        return prev;
+      });
       scheduleSyncBounds();
     });
     const unsubLoad = subscribeNativeBrowserLoading(setIsLoading);
@@ -207,37 +312,35 @@ function BrowserPage() {
       unsubNav();
       unsubLoad();
     };
-  }, [scheduleSyncBounds, updateActiveTabUrl]);
+  }, [activeTabId, persistBrowserState, scheduleSyncBounds, updateActiveTabUrl]);
 
-  const navigateToInput = useCallback(async () => {
-    const next = normalizeUrlInput(urlInput);
-    setLoadError(null);
-    setUrlInput(next);
-    updateActiveTabUrl(next);
-    try {
-      await desktopNativeBrowserNavigate(next);
-      scheduleSyncBounds();
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Navigation failed");
-    }
-  }, [scheduleSyncBounds, updateActiveTabUrl, urlInput]);
+  const navigateToInput = useCallback(() => {
+    void navigateActiveTabTo(urlInput);
+  }, [navigateActiveTabTo, urlInput]);
 
   const selectTab = useCallback(
     async (tabId: string) => {
       const tab = tabs.find((item) => item.id === tabId);
       if (!tab || tabId === activeTabId) return;
       setActiveTabId(tabId);
-      setUrlInput(tab.url);
+      setUrlInput(isBrowserHomeUrl(tab.url) ? "" : tab.url);
       setLoadError(null);
-      persistTabs(tabs, tabId);
+      persistBrowserState(tabs, tabId);
+
+      if (isBrowserHomeUrl(tab.url)) {
+        await desktopNativeBrowserSetVisible(false);
+        return;
+      }
+
       try {
-        await desktopNativeBrowserNavigate(normalizeUrlInput(tab.url));
+        await desktopNativeBrowserSetVisible(true);
+        await desktopNativeBrowserNavigate(normalizeBrowserUrlInput(tab.url));
         scheduleSyncBounds();
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Navigation failed");
       }
     },
-    [activeTabId, persistTabs, scheduleSyncBounds, tabs],
+    [activeTabId, persistBrowserState, scheduleSyncBounds, tabs],
   );
 
   const addTab = useCallback(() => {
@@ -245,10 +348,10 @@ function BrowserPage() {
     const nextTabs = [...tabs, tab];
     setTabs(nextTabs);
     setActiveTabId(tab.id);
-    setUrlInput(tab.url);
-    persistTabs(nextTabs, tab.id);
-    void desktopNativeBrowserNavigate(tab.url).then(() => scheduleSyncBounds());
-  }, [persistTabs, scheduleSyncBounds, tabs]);
+    setUrlInput("");
+    persistBrowserState(nextTabs, tab.id);
+    void desktopNativeBrowserSetVisible(false);
+  }, [persistBrowserState, tabs]);
 
   const closeTab = useCallback(
     (tabId: string) => {
@@ -259,13 +362,45 @@ function BrowserPage() {
       const fallback = nextTabs[Math.min(index, nextTabs.length - 1)];
       setTabs(nextTabs);
       setActiveTabId(fallback.id);
-      setUrlInput(fallback.url);
-      persistTabs(nextTabs, fallback.id);
+      setUrlInput(isBrowserHomeUrl(fallback.url) ? "" : fallback.url);
+      persistBrowserState(nextTabs, fallback.id);
       if (tabId === activeTabId) {
-        void desktopNativeBrowserNavigate(fallback.url).then(() => scheduleSyncBounds());
+        if (isBrowserHomeUrl(fallback.url)) {
+          void desktopNativeBrowserSetVisible(false);
+        } else {
+          void desktopNativeBrowserNavigate(fallback.url).then(() => scheduleSyncBounds());
+        }
       }
     },
-    [activeTabId, persistTabs, scheduleSyncBounds, tabs],
+    [activeTabId, persistBrowserState, scheduleSyncBounds, tabs],
+  );
+
+  const handleToggleFavorite = useCallback(
+    (entry: { url: string; title: string; dappId?: string }) => {
+      const nextFavorites = toggleBrowserFavorite(persistedMetaRef.current.favorites, entry);
+      const nextMeta = { ...persistedMetaRef.current, favorites: nextFavorites };
+      persistedMetaRef.current = nextMeta;
+      setPersistedMeta(nextMeta);
+      setTabs((prev) => {
+        persistBrowserState(prev, activeTabId, nextMeta);
+        return prev;
+      });
+    },
+    [activeTabId, persistBrowserState],
+  );
+
+  const handleTogglePin = useCallback(
+    (favoriteId: string) => {
+      const nextFavorites = toggleBrowserFavoritePin(persistedMetaRef.current.favorites, favoriteId);
+      const nextMeta = { ...persistedMetaRef.current, favorites: nextFavorites };
+      persistedMetaRef.current = nextMeta;
+      setPersistedMeta(nextMeta);
+      setTabs((prev) => {
+        persistBrowserState(prev, activeTabId, nextMeta);
+        return prev;
+      });
+    },
+    [activeTabId, persistBrowserState],
   );
 
   return (
@@ -282,8 +417,10 @@ function BrowserPage() {
         <BrowserHeader
           urlInput={urlInput}
           isLoading={isLoading}
+          isHomeTab={showHome}
+          searchPlaceholder={BROWSER_SEARCH_PLACEHOLDER}
           onUrlInputChange={setUrlInput}
-          onSubmitUrl={() => void navigateToInput()}
+          onSubmitUrl={navigateToInput}
           onBack={() => void desktopNativeBrowserGoBack()}
           onForward={() => void desktopNativeBrowserGoForward()}
           onReload={() => void desktopNativeBrowserReload()}
@@ -292,6 +429,18 @@ function BrowserPage() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <BrowserWebView viewportRef={viewportRef} />
+          {showHome && !pending ? (
+            <BrowserHomeScreen
+              chainId={chainId}
+              chainLabel={chainLabel}
+              history={persistedMeta.history}
+              favorites={persistedMeta.favorites}
+              connectedOrigins={connectedOrigins}
+              onOpenUrl={(url, title) => void navigateActiveTabTo(url, title)}
+              onToggleFavorite={handleToggleFavorite}
+              onTogglePin={handleTogglePin}
+            />
+          ) : null}
           {loadError ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center">
               <p className="rounded-lg border border-destructive/30 bg-background/90 px-4 py-2 text-sm text-destructive">
@@ -305,9 +454,9 @@ function BrowserPage() {
       {pending ? (
         <DappApprovalModal
           request={pending}
-          accountId={activeAccount?.id}
-          accountLabel={activeAccount?.name ?? "Active account"}
-          accountAddress={activeAccount?.address ?? "—"}
+          accountId={bridgeAccount?.id}
+          accountLabel={bridgeAccount?.name ?? "Active account"}
+          accountAddress={bridgeAccount?.address ?? "—"}
           networkLabel={networkLabel}
           onApprove={() => void approvePending()}
           onReject={rejectPending}

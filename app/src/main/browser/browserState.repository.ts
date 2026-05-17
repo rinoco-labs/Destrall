@@ -58,6 +58,20 @@ class BrowserStateRepository {
       last_used: number;
     }[];
 
+    const favorites = this.db
+      .prepare(
+        `SELECT id, dapp_id, url, title, pinned, added_at FROM browser_favorites
+         WHERE account_id = ? ORDER BY pinned DESC, added_at DESC`,
+      )
+      .all(accountId) as {
+      id: string;
+      dapp_id: string | null;
+      url: string;
+      title: string;
+      pinned: number;
+      added_at: number;
+    }[];
+
     const activeRow = this.db
       .prepare(`SELECT value FROM app_settings WHERE key = ?`)
       .get(`browser_active_tab:${accountId}`) as { value: string } | undefined;
@@ -92,6 +106,14 @@ class BrowserStateRepository {
         timestamp: h.timestamp,
       })),
       connectedDapps,
+      favorites: favorites.map((f) => ({
+        id: f.id,
+        dappId: f.dapp_id ?? undefined,
+        url: f.url,
+        title: f.title,
+        pinned: f.pinned === 1,
+        addedAt: f.added_at,
+      })),
     };
   }
 
@@ -101,6 +123,7 @@ class BrowserStateRepository {
       this.db.prepare(`DELETE FROM browser_tabs WHERE account_id = ?`).run(accountId);
       this.db.prepare(`DELETE FROM browser_history WHERE account_id = ?`).run(accountId);
       this.db.prepare(`DELETE FROM connected_dapps WHERE account_id = ?`).run(accountId);
+      this.db.prepare(`DELETE FROM browser_favorites WHERE account_id = ?`).run(accountId);
 
       const now = Date.now();
       for (const tab of state.tabs) {
@@ -148,6 +171,23 @@ class BrowserStateRepository {
             dapp.status,
             dapp.firstConnected,
             dapp.lastUsed,
+          );
+      }
+
+      for (const favorite of state.favorites ?? []) {
+        this.db
+          .prepare(
+            `INSERT INTO browser_favorites (id, account_id, dapp_id, url, title, pinned, added_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            favorite.id,
+            accountId,
+            favorite.dappId ?? null,
+            favorite.url,
+            favorite.title,
+            favorite.pinned ? 1 : 0,
+            favorite.addedAt,
           );
       }
 

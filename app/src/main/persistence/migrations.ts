@@ -56,6 +56,13 @@ const migrations: Migration[] = [
       stripBrowserTablesForeignKeys(db);
     },
   },
+  {
+    version: 8,
+    name: "browser_favorites",
+    up: (db) => {
+      ensureBrowserFavoritesTable(db);
+    },
+  },
 ];
 
 export function ensureAssistantChatTables(db: DatabaseSync) {
@@ -524,7 +531,23 @@ export function ensureBrowserTables(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_browser_history_account_id ON browser_history(account_id);
     CREATE INDEX IF NOT EXISTS idx_dapp_origin_permissions_account ON dapp_origin_permissions(account_id);
   `);
+  ensureBrowserFavoritesTable(db);
   stripBrowserTablesForeignKeys(db);
+}
+
+export function ensureBrowserFavoritesTable(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS browser_favorites (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      dapp_id TEXT,
+      url TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      pinned INTEGER NOT NULL DEFAULT 0,
+      added_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS idx_browser_favorites_account_id ON browser_favorites(account_id);
+  `);
 }
 
 export function ensureTriggerTables(db: DatabaseSync) {

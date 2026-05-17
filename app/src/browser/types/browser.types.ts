@@ -35,11 +35,22 @@ export type BrowserHistoryItem = {
   timestamp: number;
 };
 
+export type BrowserFavorite = {
+  id: string;
+  /** Curated dapp id when favorited from the home catalog */
+  dappId?: string;
+  url: string;
+  title: string;
+  pinned: boolean;
+  addedAt: number;
+};
+
 export type BrowserPersistedState = {
   tabs: BrowserTab[];
   activeTabId: string;
   history: BrowserHistoryItem[];
   connectedDapps: ConnectedDappRecord[];
+  favorites: BrowserFavorite[];
 };
 
 export type NativeBrowserViewportBounds = {
@@ -69,4 +80,5 @@ export const EMPTY_BROWSER_STATE: BrowserPersistedState = {
   activeTabId: "",
   history: [],
   connectedDapps: [],
+  favorites: [],
 };

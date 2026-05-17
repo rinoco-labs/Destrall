@@ -1,4 +1,5 @@
 import { Plus, X } from "lucide-react";
+import { isBrowserHomeUrl } from "../utils/browserNavigation";
 
 export type BrowserTabItem = {
   id: string;
@@ -15,6 +16,7 @@ export type BrowserTabsProps = {
 };
 
 function tabLabel(tab: BrowserTabItem): string {
+  if (isBrowserHomeUrl(tab.url)) return "New tab";
   if (tab.title.trim()) return tab.title;
   try {
     return new URL(tab.url).hostname.replace(/^www\./, "");

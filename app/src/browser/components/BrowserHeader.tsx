@@ -12,6 +12,8 @@ import {
 export type BrowserHeaderProps = {
   urlInput: string;
   isLoading: boolean;
+  isHomeTab?: boolean;
+  searchPlaceholder?: string;
   onUrlInputChange: (value: string) => void;
   onSubmitUrl: () => void;
   onBack: () => void;
@@ -31,6 +33,8 @@ function isSecureUrl(value: string): boolean {
 export function BrowserHeader({
   urlInput,
   isLoading,
+  isHomeTab = false,
+  searchPlaceholder = "Search or enter URL",
   onUrlInputChange,
   onSubmitUrl,
   onBack,
@@ -38,7 +42,7 @@ export function BrowserHeader({
   onReload,
   onClearUrl,
 }: BrowserHeaderProps) {
-  const secure = isSecureUrl(urlInput);
+  const secure = !isHomeTab && isSecureUrl(urlInput);
 
   return (
     <div className="flex items-center gap-1.5 border-b border-border bg-background/95 px-2 py-2 backdrop-blur shrink-0">
@@ -87,7 +91,7 @@ export function BrowserHeader({
             type="text"
             value={urlInput}
             onChange={(e) => onUrlInputChange(e.target.value)}
-            placeholder="Search or enter URL"
+            placeholder={searchPlaceholder}
             className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
             spellCheck={false}
           />
