@@ -14,23 +14,38 @@ const brandingDir = path.join(__dirname, 'src/assets/branding');
 const packagerIcon = path.join(brandingDir, 'desktop-icon');
 const linuxIcon = path.join(brandingDir, 'desktop-icon.png');
 
+// Host-only makers: Squirrel needs Windows (or Mono+Wine on macOS/Linux); deb/rpm need Linux tooling.
+// ZIP makers run on any host when cross-packaging with explicit --platform/--arch.
+const makers: ForgeConfig['makers'] = [
+  new MakerZIP({}, ['darwin']),
+  ...(process.platform === 'win32'
+    ? [
+        new MakerSquirrel({
+          setupIcon: path.join(brandingDir, 'desktop-icon.ico'),
+          iconUrl: path.join(brandingDir, 'desktop-icon.ico'),
+        }),
+      ]
+    : []),
+  new MakerZIP({}, ['win32']),
+  ...(process.platform === 'linux'
+    ? [
+        new MakerDeb({ options: { icon: linuxIcon } }),
+        new MakerRpm({ options: { icon: linuxIcon } }),
+      ]
+    : []),
+  new MakerZIP({}, ['linux']),
+];
+
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
-    asarUnpack: "**/node_modules/node-llama-cpp/**/*",
+    asar: {
+      unpack: '**/node_modules/node-llama-cpp/**/*',
+    },
     icon: packagerIcon,
     extraResource: [brandingDir],
   },
   rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      setupIcon: path.join(brandingDir, 'desktop-icon.ico'),
-      iconUrl: path.join(brandingDir, 'desktop-icon.ico'),
-    }),
-    new MakerZIP({}, ['darwin']),
-    new MakerRpm({ options: { icon: linuxIcon } }),
-    new MakerDeb({ options: { icon: linuxIcon } }),
-  ],
+  makers,
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

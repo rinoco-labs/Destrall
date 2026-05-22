@@ -1,0 +1,86 @@
+# Build Destrall desktop installers on the correct OS for each target.
+# Electron Forge can cross-package in some cases, but makers (DMG, Squirrel, deb/rpm)
+# require native tooling on matching runners.
+name: Release builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    name: macOS (arm64 + x64)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run make:mac:arm64
+      - run: npm run make:mac:x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: destrall-macos
+          path: app/out/make/zip/darwin/**
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run make:win:x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: destrall-windows
+          path: |
+            app/out/make/squirrel.windows/**
+            app/out/make/zip/win32/**
+          if-no-files-found: error
+
+  build-linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install packaging tools for deb/rpm makers
+        run: sudo apt-get update && sudo apt-get install -y dpkg fakeroot rpm
+      - run: npm ci
+      - run: npm run make:linux:x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: destrall-linux
+          path: |
+            app/out/make/deb/**
+            app/out/make/rpm/**
+            app/out/make/zip/linux/**
+          if-no-files-found: error

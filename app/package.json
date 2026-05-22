@@ -5,13 +5,23 @@
   "description": "Destrall — multi-chain wallet with on-device assistant",
   "main": ".vite/build/main.js",
   "private": true,
+  "engines": {
+    "node": ">=25"
+  },
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "branding:generate": "node scripts/generate-branding.mjs"
+    "branding:generate": "node scripts/generate-branding.mjs",
+    "clean:make": "rimraf out",
+    "make:mac:arm64": "electron-forge make --platform=darwin --arch=arm64",
+    "make:mac:x64": "electron-forge make --platform=darwin --arch=x64",
+    "make:mac:universal": "electron-forge make --platform=darwin --arch=universal",
+    "make:win:x64": "electron-forge make --platform=win32 --arch=x64",
+    "make:linux:x64": "electron-forge make --platform=linux --arch=x64",
+    "make:all": "npm-run-all --sequential clean:make make:mac:arm64 make:mac:x64 make:win:x64 make:linux:x64",
+    "make": "npm run make:all"
   },
   "keywords": [],
   "author": {
@@ -40,8 +50,10 @@
     "electron": "42.0.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "npm-run-all": "^4.1.5",
     "png-to-ico": "^3.0.1",
     "resolve": "^1.22.12",
+    "rimraf": "^6.1.3",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.3",
