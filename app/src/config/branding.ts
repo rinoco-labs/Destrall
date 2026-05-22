@@ -1,15 +1,23 @@
 /** Central branding constants — import from here, not individual asset paths. */
+
+import adaptiveIconUrl from "../assets/branding/adaptive-icon.png?url";
+import faviconUrl from "../assets/branding/favicon.png?url";
+import iconUrl from "../assets/branding/icon.png?url";
+import logoMarkUrl from "../assets/branding/logo-mark.png?url";
+import logoUrl from "../assets/branding/logo.png?url";
+import splashUrl from "../assets/branding/splash.png?url";
+
 export const BRANDING = {
   appName: "Destrall",
   tagline: "Your multi-chain wallet with an on-device assistant",
-  /** Static URLs served from `public/` (no build-time import required). */
+  /** Bundled raster URLs (Vite ?url) — works in dev and packaged file:// renderer. */
   assets: {
-    logo: "/logo.png",
-    logoMark: "/logo-mark.png",
-    icon: "/icon.png",
-    splash: "/splash.png",
-    adaptiveIcon: "/adaptive-icon.png",
-    favicon: "/favicon.png",
+    logo: logoUrl,
+    logoMark: logoMarkUrl,
+    icon: iconUrl,
+    splash: splashUrl,
+    adaptiveIcon: adaptiveIconUrl,
+    favicon: faviconUrl,
   },
   colors: {
     primary: "#0241ff",

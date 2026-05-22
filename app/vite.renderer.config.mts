@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  // Relative asset URLs so logos load under file:// in packaged Electron (see branding.ts).
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
