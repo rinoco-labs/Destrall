@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Globe,
@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "@/hooks/use-theme";
 import { colorClass, getInitial } from "@/stores/accountsStore";
 import { useWalletStore } from "@/stores/walletStore";
+import { AppLogo } from "@/components/branding/AppLogo";
 
 type NavKey = "home" | "assistant" | "browser" | "store" | "settings" | "developer";
 
@@ -64,6 +65,11 @@ export function AppShell({
   const [accountError, setAccountError] = useState<string | null>(null);
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
+  useEffect(() => {
+    if (!isBrowserLayout) return;
+    window.dispatchEvent(new Event("destrall:browser-layout-change"));
+  }, [collapsed, isBrowserLayout]);
+
   const handleCreateAccount = async () => {
     const name = newName.trim();
     if (!name) return;
@@ -89,7 +95,13 @@ export function AppShell({
         } shrink-0 border-r border-border p-3 hidden md:flex flex-col gap-6 transition-all duration-200 h-screen overflow-hidden`}
       >
         <div className="flex items-center justify-between px-2 pt-2">
-          {!collapsed && <div className="text-lg font-bold">Destrall</div>}
+          <AppLogo
+            variant={collapsed ? "mark" : "full"}
+            size={collapsed ? "sm" : "md"}
+            showName={!collapsed}
+            nameClassName="text-lg"
+            className={collapsed ? "mx-auto" : "min-w-0"}
+          />
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}

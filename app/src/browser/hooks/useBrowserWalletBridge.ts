@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDappConnectionStore, type PendingDappRequest } from "../stores/dappConnectionStore";
 import {
   desktopBrowserAuthorizeDapp,
@@ -48,8 +48,15 @@ export function useBrowserWalletBridge() {
   const isUnlocked = useWalletStore((s) => s.isUnlocked);
   const network = useNetworkStore((s) => s.network);
   const [busy, setBusy] = useState(false);
+  const silentConnectInflightRef = useRef<
+    Map<string, Promise<Awaited<ReturnType<typeof desktopBrowserWalletConnect>>>>
+  >(new Map());
 
   const activeAccount = accounts.find((a) => a.id === activeAccountId) ?? accounts[0];
+
+  const resolveSupersededConnect = useCallback(async (requestId: string, message: string) => {
+    await desktopNativeBrowserResolveWalletRequest({ id: requestId, error: message });
+  }, []);
 
   const rejectPending = useCallback(
     async (message = "User rejected the request") => {
@@ -107,23 +114,60 @@ export function useBrowserWalletBridge() {
         return;
       }
 
-      if (request.method === "connect" && payload?.silent) {
-        try {
-          const result = await desktopBrowserWalletConnect({
+      if (request.method === "connect") {
+        const originKey = request.origin;
+        let shared = silentConnectInflightRef.current.get(originKey);
+        if (!shared) {
+          shared = desktopBrowserWalletConnect({
             accountId: activeAccount.id,
             origin: request.origin,
             chain: "sui",
             silent: true,
+          }).finally(() => {
+            silentConnectInflightRef.current.delete(originKey);
           });
-          await desktopNativeBrowserResolveWalletRequest({ id: request.id, result });
-        } catch (error) {
-          await desktopNativeBrowserResolveWalletRequest({
-            id: request.id,
-            error: error instanceof Error ? error.message : "Connect failed",
-          });
-        } finally {
-          void desktopNativeBrowserSetVisible(true).catch(() => undefined);
+          silentConnectInflightRef.current.set(originKey, shared);
         }
+
+        try {
+          const result = await shared;
+          const hasAccounts = Array.isArray(result.accounts) && result.accounts.length > 0;
+
+          if (payload?.silent || hasAccounts) {
+            await desktopNativeBrowserResolveWalletRequest({ id: request.id, result });
+            if (hasAccounts) {
+              await desktopNativeBrowserPersistAuthorizedAccounts({
+                origin: request.origin,
+                chain: "sui",
+                accounts: result.accounts,
+              }).catch(() => undefined);
+            }
+            return;
+          }
+        } catch (error) {
+          if (payload?.silent) {
+            await desktopNativeBrowserResolveWalletRequest({
+              id: request.id,
+              error: error instanceof Error ? error.message : "Connect failed",
+            });
+            return;
+          }
+        }
+
+        const existing = useDappConnectionStore.getState().pending;
+        if (existing?.method === "connect" && existing.origin === request.origin) {
+          await resolveSupersededConnect(
+            request.id,
+            "A connection request for this site is already waiting for approval",
+          );
+          return;
+        }
+        if (existing?.method === "connect") {
+          await resolveSupersededConnect(existing.id, "Superseded by a newer connection request");
+        }
+
+        void desktopNativeBrowserSetVisible(false).catch(() => undefined);
+        setPending(request);
         return;
       }
 
@@ -134,7 +178,7 @@ export function useBrowserWalletBridge() {
 
       setPending(request);
     },
-    [activeAccount, isUnlocked, setPending],
+    [activeAccount, isUnlocked, resolveSupersededConnect, setPending],
   );
 
   useEffect(() => {

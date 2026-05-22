@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageSquareText, ShieldCheck, Sparkles } from "lucide-react";
+import { MessageSquareText, ShieldCheck } from "lucide-react";
+import { AppLogo } from "@/components/branding/AppLogo";
 import { AppShell } from "@/components/app-shell";
 import { HelpPageHeader } from "@/components/help/HelpPageHeader";
 import { WorkflowFlowCard } from "@/components/help/WorkflowFlowCard";
@@ -82,7 +83,7 @@ function HowItWorksPage() {
             to="/assistant-tools"
             className="rounded-2xl border border-border bg-card/50 p-5 hover:bg-secondary/30 transition"
           >
-            <Sparkles className="w-6 h-6 text-brand mb-3" />
+            <AppLogo variant="mark" size="md" className="mb-3" />
             <p className="font-semibold">Assistant Tools</p>
             <p className="text-sm text-muted-foreground mt-1">Detailed guides, examples, and risks</p>
           </Link>

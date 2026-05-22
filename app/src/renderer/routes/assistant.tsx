@@ -19,6 +19,7 @@ import {
   PencilLine,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { AppLogo } from "@/components/branding/AppLogo";
 import { useWalletStore } from "@/stores/walletStore";
 import { useAiModelStore } from "@/stores/aiModelStore";
 import { useAssistantChatStore } from "@/stores/assistantChatStore";
@@ -618,7 +619,10 @@ function AssistantPage() {
         {/* Chat column */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold tracking-tight">Assistant</h1>
+            <div className="flex items-center gap-2.5">
+              <AppLogo variant="mark" size="sm" />
+              <h1 className="text-2xl font-bold tracking-tight">Assistant</h1>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"

@@ -255,6 +255,7 @@ export type DestrallApi = {
     onDidNavigate: (listener: (payload: { url: string }) => void) => () => void;
     onLoadingState: (listener: (payload: { isLoading: boolean }) => void) => () => void;
     onWalletRequest: (listener: (payload: DestrallWalletBridgeRequest) => void) => () => void;
+    onRequestBoundsSync: (listener: () => void) => () => void;
   };
   browser: {
     getState: (accountId: string) => Promise<RpcResult<BrowserPersistedState>>;
@@ -393,6 +394,7 @@ export const IPCChannels = {
   nativeBrowserLoadingState: "native-browser:loading-state",
   nativeBrowserWalletRequest: "native-browser:wallet-request",
   nativeBrowserWalletResponse: "native-browser:wallet-response",
+  nativeBrowserRequestBoundsSync: "native-browser:request-bounds-sync",
   browserGetState: "browser:get-state",
   browserReplaceState: "browser:replace-state",
   browserAuthorizeDapp: "browser:authorize-dapp",

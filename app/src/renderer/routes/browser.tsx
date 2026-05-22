@@ -30,6 +30,7 @@ import {
   desktopNativeBrowserSetViewportBounds,
   subscribeNativeBrowserDidNavigate,
   subscribeNativeBrowserLoading,
+  subscribeNativeBrowserRequestBoundsSync,
 } from "@/lib/desktopBrowser";
 import { useNetworkStore } from "@/stores/networkStore";
 import { useWalletStore } from "@/stores/walletStore";
@@ -221,15 +222,41 @@ function BrowserPage() {
       }
     })();
 
+    const observed = new Set<Element>();
     const ro = new ResizeObserver(() => scheduleSyncBounds());
-    if (viewportRef.current) ro.observe(viewportRef.current);
-    if (chromeRef.current) ro.observe(chromeRef.current);
-    window.addEventListener("resize", scheduleSyncBounds);
+    const observe = (el: Element | null | undefined) => {
+      if (!el || observed.has(el)) return;
+      observed.add(el);
+      ro.observe(el);
+    };
+
+    observe(viewportRef.current);
+    observe(chromeRef.current);
+    observe(chromeRef.current?.parentElement);
+    observe(document.querySelector("main > section"));
+
+    const onWindowResize = () => scheduleSyncBounds();
+    window.addEventListener("resize", onWindowResize);
+    window.addEventListener("destrall:browser-layout-change", onWindowResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onWindowResize);
+    }
+
+    let unsubBoundsSync: (() => void) | undefined;
+    try {
+      unsubBoundsSync = subscribeNativeBrowserRequestBoundsSync(() => scheduleSyncBounds());
+    } catch {
+      // Preload not ready during hot reload
+    }
 
     return () => {
       cancelled = true;
       ro.disconnect();
-      window.removeEventListener("resize", scheduleSyncBounds);
+      observed.clear();
+      window.removeEventListener("resize", onWindowResize);
+      window.removeEventListener("destrall:browser-layout-change", onWindowResize);
+      window.visualViewport?.removeEventListener("resize", onWindowResize);
+      unsubBoundsSync?.();
       void desktopNativeBrowserSetVisible(false).catch(() => undefined);
     };
   }, [scheduleSyncBounds]);

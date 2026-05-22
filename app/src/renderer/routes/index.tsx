@@ -30,29 +30,18 @@ import { useAiModelStore } from "@/stores/aiModelStore";
 import { useWalletStore } from "@/stores/walletStore";
 import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
 import { desktopPreviewMnemonic, isDestrallDesktop } from "@/lib/desktopWallet";
+import { AppLogo } from "@/components/branding/AppLogo";
+import { BRANDING } from "@config/branding";
 
 export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
     meta: [
-      { title: "Set Up Your Wallet — Vault" },
+      { title: `Set Up Your Wallet — ${BRANDING.appName}` },
       { name: "description", content: "Create a multi-chain wallet and set up the on-device assistant." },
     ],
   }),
 });
-
-function Asterisk({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-      <path
-        d="M12 2v20M4.2 6.2l15.6 11.6M4.2 17.8L19.8 6.2M2 12h20"
-        stroke="currentColor"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 type Step =
   | "choose"
@@ -343,7 +332,7 @@ function LeftPanel() {
       className="relative hidden md:flex flex-col justify-between p-8 m-3 rounded-2xl text-white min-h-[560px]"
       style={{ background: "var(--gradient-brand)" }}
     >
-      <Asterisk className="w-8 h-8 text-white" />
+      <AppLogo variant="mark" size="lg" imageClassName="brightness-0 invert" />
       <div className="space-y-2">
         <p className="text-sm/relaxed opacity-90">You can easily</p>
         <h2 className="text-2xl font-semibold leading-snug max-w-[18rem]">
@@ -580,7 +569,7 @@ function ChooseStep({ onCreate, onImport }: { onCreate: () => void; onImport: ()
   const { t } = useTranslation();
   return (
     <>
-      <Asterisk className="w-6 h-6 text-brand mb-4" />
+      <AppLogo variant="mark" size="md" className="mb-4" />
       <h1 className="text-3xl font-bold tracking-tight text-foreground">
         {t("onboarding.setupWalletTitle")}
       </h1>

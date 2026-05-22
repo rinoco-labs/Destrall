@@ -8,7 +8,6 @@ import {
   Zap,
   // DollarSign,
   Info,
-  Brain,
   LogOut,
   ShieldCheck,
   Timer,
@@ -20,6 +19,7 @@ import {
   Globe,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { AppLogo } from "@/components/branding/AppLogo";
 import { ThemeSelector } from "@/components/settings/ThemeSelector";
 import { SelectModal } from "@/components/settings/SelectModal";
 import { AutoLockModal } from "@/components/settings/AutoLockModal";
@@ -68,6 +68,14 @@ type RowProps = {
   highlight?: boolean;
   onClick?: () => void;
 };
+
+function AssistantBrandIcon({ className }: { className?: string }) {
+  return (
+    <span className={className}>
+      <AppLogo variant="mark" size="sm" />
+    </span>
+  );
+}
 
 function SettingRow({ icon: Icon, label, value, destructive, highlight, onClick }: RowProps) {
   return (
@@ -187,9 +195,10 @@ function SettingsPage() {
   return (
     <AppShell active="settings">
       <div className="max-w-3xl mx-auto w-full px-2">
-        <h1 className="text-3xl font-bold tracking-tight mb-8">
-          {t("settings.title")}
-        </h1>
+        <div className="flex items-center gap-3 mb-8">
+          <AppLogo variant="icon" size="lg" />
+          <h1 className="text-3xl font-bold tracking-tight">{t("settings.title")}</h1>
+        </div>
 
         {/* Appearance */}
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-3 px-1">
@@ -268,7 +277,7 @@ function SettingsPage() {
             to="/assistant-tools"
             className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/40 transition"
           >
-            <Sparkles className="w-5 h-5 text-muted-foreground" />
+            <AppLogo variant="mark" size="sm" />
             <span className="flex-1 text-sm font-medium">Assistant Tools</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
           </Link>
@@ -305,7 +314,7 @@ function SettingsPage() {
         </p>
         <div className="rounded-2xl border border-border bg-card/40 backdrop-blur divide-y divide-border overflow-hidden mb-8">
           <SettingRow
-            icon={Brain}
+            icon={AssistantBrandIcon}
             label={t("settings.assistantAi", "Assistant AI")}
             value={aiStatusLabel}
             onClick={() => setOpenModal("aiModel")}

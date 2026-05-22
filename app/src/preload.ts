@@ -167,6 +167,11 @@ const api: DestrallApi = {
       ipcRenderer.on(IPCChannels.nativeBrowserWalletRequest, wrapped);
       return () => ipcRenderer.removeListener(IPCChannels.nativeBrowserWalletRequest, wrapped);
     },
+    onRequestBoundsSync: (listener) => {
+      const wrapped = () => listener();
+      ipcRenderer.on(IPCChannels.nativeBrowserRequestBoundsSync, wrapped);
+      return () => ipcRenderer.removeListener(IPCChannels.nativeBrowserRequestBoundsSync, wrapped);
+    },
   },
   browser: {
     getState: (accountId) => ipcRenderer.invoke(IPCChannels.browserGetState, { accountId }),

@@ -1,8 +1,8 @@
 {
-  "name": "app",
-  "productName": "app",
+  "name": "destrall",
+  "productName": "Destrall",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Destrall — multi-chain wallet with on-device assistant",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
@@ -10,7 +10,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "branding:generate": "node scripts/generate-branding.mjs"
   },
   "keywords": [],
   "author": {
@@ -39,7 +40,9 @@
     "electron": "42.0.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "png-to-ico": "^3.0.1",
     "resolve": "^1.22.12",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.3",
     "vite": "^5.4.21"

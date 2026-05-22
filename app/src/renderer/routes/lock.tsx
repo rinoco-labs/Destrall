@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Lock } from "lucide-react";
 import { useWalletStore } from "@/stores/walletStore";
+import { AppLogo } from "@/components/branding/AppLogo";
+import { BRANDING } from "@config/branding";
 
 export const Route = createFileRoute("/lock")({
   component: LockPage,
@@ -39,12 +40,12 @@ function LockPage() {
     <main className="min-h-screen w-full bg-background text-foreground flex items-center justify-center px-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm flex flex-col items-center">
         <div
-          className="w-20 h-20 rounded-2xl bg-card/60 border border-border flex items-center justify-center mb-6"
+          className="w-20 h-20 rounded-2xl bg-card/60 border border-border flex items-center justify-center mb-6 p-3"
           style={{ boxShadow: "var(--shadow-card)" }}
         >
-          <Lock className="w-9 h-9 text-brand" />
+          <AppLogo variant="icon" size="lg" className="w-full h-full justify-center" imageClassName="w-full h-full" />
         </div>
-        <h1 className="text-3xl font-bold mb-2">App Locked</h1>
+        <h1 className="text-3xl font-bold mb-2">{BRANDING.appName} locked</h1>
         <p className="text-sm text-muted-foreground mb-8">
           Enter your password to unlock
         </p>

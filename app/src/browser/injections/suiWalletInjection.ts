@@ -1,4 +1,5 @@
 import { SOLANA_BROWSER_ENABLED } from "../chains/solana/placeholder";
+import { WALLET_INJECTION_ICON_DATA_URI } from "../../config/walletInjectionIcon";
 
 export type WalletInjectionOptions = {
   suiChainLabel: string;
@@ -20,11 +21,7 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
   window.__destrallWalletInjected = true;
   const pending = new Map();
   const LOG_PREFIX = "[destrall:wallet-inject]";
-  const walletIcon =
-    "data:image/svg+xml;utf8," +
-    encodeURIComponent(
-      "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><rect width='128' height='128' rx='26' fill='#111827'/><circle cx='64' cy='64' r='34' fill='#14F195'/><circle cx='64' cy='64' r='14' fill='#0EA5E9'/></svg>",
-    );
+  const walletIcon = ${JSON.stringify(WALLET_INJECTION_ICON_DATA_URI)};
 
   function toBase64(value) {
     const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || []);
@@ -149,6 +146,7 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
     const suiChain = ${suiChainLabel};
     let accounts = readCachedAccounts(chainKey);
     const listeners = new Set();
+    let silentConnectInFlight = null;
     let interactiveConnectInFlight = null;
 
     function emitAccountsChanged() {
@@ -161,13 +159,21 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
         connect: async (input) => {
           const silent = Boolean(input && input.silent);
           if (silent) {
-            const response = await hostRequest("connect", { chain: chainKey, silent: true });
-            const next = normalizeConnectAccounts(response);
-            if (next.length) {
-              accounts = next;
-              emitAccountsChanged();
-            }
-            return { accounts: next };
+            if (silentConnectInFlight) return silentConnectInFlight;
+            silentConnectInFlight = (async () => {
+              try {
+                const response = await hostRequest("connect", { chain: chainKey, silent: true });
+                const next = normalizeConnectAccounts(response);
+                if (next.length) {
+                  accounts = next;
+                  emitAccountsChanged();
+                }
+                return { accounts: next };
+              } finally {
+                silentConnectInFlight = null;
+              }
+            })();
+            return silentConnectInFlight;
           }
           if (interactiveConnectInFlight) return interactiveConnectInFlight;
           interactiveConnectInFlight = (async () => {
@@ -263,7 +269,10 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
   }
 
   const suiWallet = createSuiWallet();
-  const register = () =>
+  let walletRegistered = false;
+  const registerOnce = () => {
+    if (walletRegistered) return;
+    walletRegistered = true;
     window.dispatchEvent(
       new CustomEvent("wallet-standard:register-wallet", {
         detail: (api) => {
@@ -271,13 +280,11 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
         },
       }),
     );
+    console.debug(LOG_PREFIX, "register-wallet", window.location.href);
+  };
 
-  console.debug(LOG_PREFIX, "injection ready", window.location.href);
-  register();
-  window.addEventListener("wallet-standard:app-ready", () => {
-    console.debug(LOG_PREFIX, "app-ready re-register");
-    register();
-  });
+  registerOnce();
+  window.addEventListener("wallet-standard:app-ready", registerOnce);
 })();
 `;
 }

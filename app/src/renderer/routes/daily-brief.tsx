@@ -17,6 +17,7 @@ import {
   Target,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { AppLogo } from "@/components/branding/AppLogo";
 import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
 import { chainQueryScope } from "@/components/network-wallet-query-sync";
@@ -137,7 +138,7 @@ function DailyBriefPage() {
           <>
             <SectionCard
               title="Overview"
-              icon={Sparkles}
+              icon={BriefBrandIcon}
               open={openSections.overview}
               onOpenChange={(v) => setSection("overview", v)}
             >
@@ -369,6 +370,14 @@ function DailyBriefPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function BriefBrandIcon({ className }: { className?: string }) {
+  return (
+    <span className={className}>
+      <AppLogo variant="mark" size="sm" />
+    </span>
   );
 }
 

@@ -11,6 +11,7 @@ import type { BrowserFavorite, BrowserHistoryItem } from "../types/browser.types
 import { isFavoriteDappId, isFavoriteUrl } from "../utils/browserFavorites";
 import { BrowserDappCard } from "./BrowserDappCard";
 import { BrowserDappIcon } from "./BrowserDappIcon";
+import { AppLogo } from "@/components/branding/AppLogo";
 
 type HomePanel = "discover" | "recent";
 
@@ -105,9 +106,12 @@ export function BrowserHomeScreen({
     >
       <div className="shrink-0 border-b border-border/80 bg-background/95 px-4 pb-3 pt-3 backdrop-blur">
         <div className="mb-3">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {chainLabel}
-          </p>
+          <div className="mb-2 flex items-center gap-2">
+            <AppLogo variant="mark" size="xs" />
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {chainLabel}
+            </p>
+          </div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Discover Apps</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Tap a dapp to open it in Destrall with your wallet connected.

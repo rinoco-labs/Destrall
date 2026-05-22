@@ -7,18 +7,29 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+
+const brandingDir = path.join(__dirname, 'src/assets/branding');
+/** Base path without extension — Forge picks .icns / .ico / .png per platform. */
+const packagerIcon = path.join(brandingDir, 'desktop-icon');
+const linuxIcon = path.join(brandingDir, 'desktop-icon.png');
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     asarUnpack: "**/node_modules/node-llama-cpp/**/*",
+    icon: packagerIcon,
+    extraResource: [brandingDir],
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: path.join(brandingDir, 'desktop-icon.ico'),
+      iconUrl: path.join(brandingDir, 'desktop-icon.ico'),
+    }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({ options: { icon: linuxIcon } }),
+    new MakerDeb({ options: { icon: linuxIcon } }),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),

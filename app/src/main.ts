@@ -1,6 +1,8 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, nativeImage, type NativeImage } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import started from "electron-squirrel-startup";
+import { getBrandingDir, getBrandingRuntimeIconPath } from "./main/lib/brandingPaths";
 import { getDatabase } from "./main/persistence/database";
 import { registerChainIpcHandlers } from "./main/ipc/registerChainIpcHandlers";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
@@ -18,11 +20,48 @@ if (started) {
   app.quit();
 }
 
+function loadPlatformIcon(): NativeImage | undefined {
+  const dir = getBrandingDir();
+  const candidates: string[] = [path.resolve(getBrandingRuntimeIconPath())];
+
+  if (process.platform === "darwin") {
+    candidates.push(path.join(dir, "desktop-icon.png"));
+  }
+
+  for (const iconPath of candidates) {
+    if (!fs.existsSync(iconPath)) {
+      continue;
+    }
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      return icon;
+    }
+  }
+
+  console.warn(`[branding] App icon could not be loaded from ${candidates.join(", ")}`);
+  return undefined;
+}
+
+/** Dock (macOS) + taskbar (Windows/Linux). */
+function applyAppIcon(): void {
+  const icon = loadPlatformIcon();
+  if (!icon) {
+    return;
+  }
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(icon);
+  }
+  app.setAppUserModelId?.("com.destrall.app");
+}
+
 const createWindow = () => {
   const guestPreload = path.join(__dirname, "preload-browser-guest.js");
+  const icon = loadPlatformIcon();
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    ...(icon ? { icon } : {}),
+    title: "Destrall",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -44,6 +83,7 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  applyAppIcon();
   getDatabase();
   timezoneSettingsService.initialize();
   registerCorePackages();
@@ -67,6 +107,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+  applyAppIcon();
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }

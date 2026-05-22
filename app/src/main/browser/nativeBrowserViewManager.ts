@@ -303,10 +303,24 @@ export function getNativeBrowserManager(): NativeBrowserViewManager | null {
   return nativeBrowserManager;
 }
 
+function requestRendererBoundsSync(mainWindow: BrowserWindow) {
+  if (mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(IPCChannels.nativeBrowserRequestBoundsSync);
+}
+
 export function attachNativeBrowserToWindow(mainWindow: BrowserWindow, guestPreloadPath: string) {
   nativeBrowserManager = new NativeBrowserViewManager(mainWindow, guestPreloadPath);
-  mainWindow.on("resize", () => nativeBrowserManager?.reapplyBounds());
-  mainWindow.on("move", () => nativeBrowserManager?.reapplyBounds());
+
+  const onLayoutChange = () => {
+    requestRendererBoundsSync(mainWindow);
+  };
+
+  mainWindow.on("resize", onLayoutChange);
+  mainWindow.on("move", onLayoutChange);
+  mainWindow.on("maximize", onLayoutChange);
+  mainWindow.on("unmaximize", onLayoutChange);
+  mainWindow.on("enter-full-screen", onLayoutChange);
+  mainWindow.on("leave-full-screen", onLayoutChange);
   mainWindow.on("closed", () => {
     nativeBrowserManager = null;
   });

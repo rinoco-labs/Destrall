@@ -175,3 +175,8 @@ export function subscribeNativeBrowserWalletRequest(
   const { nativeBrowser } = api();
   return nativeBrowser.onWalletRequest(listener);
 }
+
+export function subscribeNativeBrowserRequestBoundsSync(listener: () => void) {
+  const { nativeBrowser } = api();
+  return nativeBrowser.onRequestBoundsSync(listener);
+}

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { AssistantCapabilitiesResult } from "../../../assistant/assistantResultTypes";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AppLogo } from "@/components/branding/AppLogo";
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   "portfolio-analysis": PieChart,
@@ -41,8 +42,8 @@ export function AssistantCapabilitiesCard({ payload, onTryPrompt }: Props) {
         }}
       >
         <div className="flex items-start gap-3 p-4 border-b border-border/50">
-          <div className="w-10 h-10 rounded-xl border border-brand/35 bg-brand/10 text-brand flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl border border-brand/35 bg-brand/10 flex items-center justify-center shrink-0 p-1.5">
+            <AppLogo variant="mark" size="sm" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold tracking-[0.18em] text-brand uppercase">Assistant</p>

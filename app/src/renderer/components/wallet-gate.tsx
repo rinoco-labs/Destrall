@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useWalletStore } from "@/stores/walletStore";
 import { useOnboardingStore } from "@/stores/onboardingStore";
+import { AppLogo } from "@/components/branding/AppLogo";
+import { BRANDING } from "@config/branding";
 
 export function WalletGate({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -44,8 +46,9 @@ export function WalletGate({ children }: { children: React.ReactNode }) {
 
   if (restoreStatus === "loading" || restoreStatus === "idle") {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground">
-        <p className="text-sm text-muted-foreground">Restoring wallet…</p>
+      <div className="min-h-screen w-full flex flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <AppLogo variant="icon" size="xl" />
+        <p className="text-sm text-muted-foreground">Restoring {BRANDING.appName}…</p>
       </div>
     );
   }
