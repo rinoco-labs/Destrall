@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { ChainId, WalletAccount } from "../../../shared/wallet/types";
+import {
+  TERMS_AND_CONDITIONS_URL,
+  TERMS_NOT_ACCEPTED_ERROR,
+} from "../../../shared/wallet/terms";
 import { runInTransaction } from "../../persistence/database";
 import { deriveSuiAccountFromMnemonic } from "../chains/sui/sui-wallet.service";
 import type { MnemonicService } from "../../wallet/mnemonicService";
@@ -67,6 +71,7 @@ export type CreateOrImportArgs = {
   profileName?: string;
   accountName?: string;
   imported?: boolean;
+  termsAccepted: boolean;
 };
 
 /**
@@ -74,6 +79,10 @@ export type CreateOrImportArgs = {
  * for each supported chain, and unlocks the in-memory session for the current process.
  */
 export function executeCreateOrImportWallet(deps: ImportWalletDeps, args: CreateOrImportArgs): WalletAccount {
+  if (args.termsAccepted !== true) {
+    throw new Error(TERMS_NOT_ACCEPTED_ERROR);
+  }
+
   const normalized = deps.mnemonicService.normalize(args.mnemonic);
   if (!deps.mnemonicService.validate(normalized)) {
     throw new Error("Invalid recovery phrase");
@@ -96,10 +105,13 @@ export function executeCreateOrImportWallet(deps: ImportWalletDeps, args: Create
 
     deps.db
       .prepare(
-        `INSERT INTO wallet_profile (id, name, created_at, updated_at)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO wallet_profile (
+           id, name, created_at, updated_at,
+           accepted_terms, accepted_terms_at, accepted_terms_url
+         )
+         VALUES (?, ?, ?, ?, 1, ?, ?)`,
       )
-      .run(profileId, profileName, now, now);
+      .run(profileId, profileName, now, now, now, TERMS_AND_CONDITIONS_URL);
 
     const insertAccount = deps.db.prepare(
       `INSERT INTO wallet_accounts

@@ -33,6 +33,7 @@ export async function desktopCreateWallet(params: {
   password: string;
   profileName?: string;
   accountName?: string;
+  termsAccepted: true;
 }): Promise<WalletAccount> {
   return unwrap(api().wallet.createWallet(params));
 }
@@ -42,8 +43,13 @@ export async function desktopImportWallet(params: {
   password: string;
   profileName?: string;
   accountName?: string;
+  termsAccepted: true;
 }): Promise<WalletAccount> {
   return unwrap(api().wallet.importWallet(params));
+}
+
+export async function desktopOpenExternalUrl(url: string): Promise<void> {
+  await unwrap(api().app.openExternalUrl({ url }));
 }
 
 export async function desktopCreateAccount(params: { name: string }): Promise<WalletAccount> {

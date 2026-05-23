@@ -18,6 +18,7 @@ import {
   desktopUpdateAccountIcon,
   isDestrallDesktop,
 } from "@/lib/desktopWallet";
+import { TERMS_NOT_ACCEPTED_ERROR } from "../../shared/wallet/terms";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 
 type WalletStoreState = {
@@ -35,12 +36,14 @@ type WalletStoreState = {
     password: string;
     profileName?: string;
     accountName?: string;
+    termsAccepted: true;
   }) => Promise<WalletAccount>;
   importWallet: (params: {
     mnemonic: string;
     password: string;
     profileName?: string;
     accountName?: string;
+    termsAccepted: true;
   }) => Promise<WalletAccount>;
   createAccount: (name: string) => Promise<WalletAccount>;
   switchAccount: (accountId: string) => Promise<void>;
@@ -111,12 +114,18 @@ export const useWalletStore = create<WalletStoreState>((set, get) => ({
   },
 
   createWallet: async (params) => {
+    if (params.termsAccepted !== true) {
+      throw new Error(TERMS_NOT_ACCEPTED_ERROR);
+    }
     const account = await desktopCreateWallet(params);
     await get().refreshWallets();
     return account;
   },
 
   importWallet: async (params) => {
+    if (params.termsAccepted !== true) {
+      throw new Error(TERMS_NOT_ACCEPTED_ERROR);
+    }
     const account = await desktopImportWallet(params);
     await get().refreshWallets();
     return account;

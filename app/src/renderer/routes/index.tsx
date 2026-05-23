@@ -31,7 +31,9 @@ import { useWalletStore } from "@/stores/walletStore";
 import { normalizeMnemonicInput } from "../../shared/mnemonicNormalize";
 import { desktopPreviewMnemonic, isDestrallDesktop } from "@/lib/desktopWallet";
 import { AppLogo } from "@/components/branding/AppLogo";
+import { TermsAcceptanceField } from "@/components/onboarding/TermsAcceptanceField";
 import { BRANDING } from "@config/branding";
+import { TERMS_NOT_ACCEPTED_ERROR } from "../../shared/wallet/terms";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -92,8 +94,16 @@ function Index() {
   const [confirmWordA, setConfirmWordA] = useState("");
   const [confirmWordB, setConfirmWordB] = useState("");
   const [languageModalOpen, setLanguageModalOpen] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsValidationAttempted, setTermsValidationAttempted] = useState(false);
   const language = useSettingsStore((s) => s.language);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+
+  const requireTermsAccepted = () => {
+    if (termsAccepted) return true;
+    setTermsValidationAttempted(true);
+    return false;
+  };
 
   const creationWords = useMemo(
     () => creationMnemonic?.split(/\s+/).filter(Boolean) ?? [],
@@ -159,6 +169,7 @@ function Index() {
   };
 
   const submitPassword = () => {
+    if (!requireTermsAccepted()) return;
     if (password.length < 8) {
       setPwdError(t("onboarding.passwordTooShort"));
       return;
@@ -168,6 +179,10 @@ function Index() {
   };
 
   const commitWallet = async () => {
+    if (!requireTermsAccepted()) {
+      setSubmitError(t("onboarding.termsRequired", TERMS_NOT_ACCEPTED_ERROR));
+      return;
+    }
     setSubmitError(null);
     setIsSubmitting(true);
     try {
@@ -181,6 +196,7 @@ function Index() {
         const account = await importWallet({
           mnemonic: normalizedImportSeed,
           password,
+          termsAccepted: true,
         });
         setCreatedAddress(account.address);
       } else {
@@ -188,6 +204,7 @@ function Index() {
         const account = await createWallet({
           mnemonic: creationMnemonic,
           password,
+          termsAccepted: true,
         });
         setCreatedAddress(account.address);
       }
@@ -205,12 +222,25 @@ function Index() {
   };
 
   const submitConfirm = () => {
+    if (!requireTermsAccepted()) return;
     if (confirm !== password) {
       setPwdError(t("onboarding.passwordsDoNotMatch"));
       return;
     }
     setPwdError(null);
     void commitWallet();
+  };
+
+  const startCreateFlow = () => {
+    if (!requireTermsAccepted()) return;
+    setFlow("create");
+    setStep("phrase");
+  };
+
+  const startImportFlow = () => {
+    if (!requireTermsAccepted()) return;
+    setFlow("import");
+    setStep("import");
   };
 
   const startDownload = async () => {
@@ -319,6 +349,12 @@ function Index() {
           startDownload={startDownload}
           finish={finish}
           skipModelSetup={skipModelSetup}
+          termsAccepted={termsAccepted}
+          setTermsAccepted={setTermsAccepted}
+          termsValidationAttempted={termsValidationAttempted}
+          startCreateFlow={startCreateFlow}
+          startImportFlow={startImportFlow}
+          requireTermsAccepted={requireTermsAccepted}
           t={t}
         />
       </div>
@@ -388,6 +424,12 @@ type RightPanelProps = {
   startDownload: () => void | Promise<void>;
   finish: () => void;
   skipModelSetup: () => void;
+  termsAccepted: boolean;
+  setTermsAccepted: (value: boolean) => void;
+  termsValidationAttempted: boolean;
+  startCreateFlow: () => void;
+  startImportFlow: () => void;
+  requireTermsAccepted: () => boolean;
   t: ReturnType<typeof useTranslation>["t"];
 };
 
@@ -436,21 +478,32 @@ function RightPanel(props: RightPanelProps) {
     startDownload,
     finish,
     skipModelSetup,
+    termsAccepted,
+    setTermsAccepted,
+    termsValidationAttempted,
+    startCreateFlow,
+    startImportFlow,
+    requireTermsAccepted,
     t,
   } = props;
+
+  const termsBlocked = !termsAccepted;
+  const termsDisabledTitle = t(
+    "onboarding.termsDisabledHint",
+    "Accept the Terms and Conditions to continue.",
+  );
 
   return (
     <div className="p-8 sm:p-12 flex flex-col justify-center min-h-[560px]">
       {step === "choose" && (
         <ChooseStep
-          onCreate={() => {
-            setFlow("create");
-            setStep("phrase");
-          }}
-          onImport={() => {
-            setFlow("import");
-            setStep("import");
-          }}
+          termsAccepted={termsAccepted}
+          setTermsAccepted={setTermsAccepted}
+          showTermsValidationError={termsValidationAttempted && !termsAccepted}
+          onCreate={startCreateFlow}
+          onImport={startImportFlow}
+          createImportDisabled={termsBlocked}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -476,7 +529,12 @@ function RightPanel(props: RightPanelProps) {
           onCopy={copyPhrase}
           words={creationWords}
           previewError={previewError}
-          onContinue={() => setStep("confirm-phrase")}
+          onContinue={() => {
+            if (!requireTermsAccepted()) return;
+            setStep("confirm-phrase");
+          }}
+          continueDisabled={termsBlocked || words.length < 12 || !!previewError}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -487,8 +545,12 @@ function RightPanel(props: RightPanelProps) {
           setConfirmWordA={setConfirmWordA}
           confirmWordB={confirmWordB}
           setConfirmWordB={setConfirmWordB}
-          onContinue={() => setStep("password")}
-          canContinue={phraseConfirmed}
+          onContinue={() => {
+            if (!requireTermsAccepted()) return;
+            setStep("password");
+          }}
+          canContinue={phraseConfirmed && !termsBlocked}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -496,9 +558,14 @@ function RightPanel(props: RightPanelProps) {
         <ImportStep
           value={seedInput}
           onChange={setSeedInput}
-          onContinue={() => setStep("password")}
+          onContinue={() => {
+            if (!requireTermsAccepted()) return;
+            setStep("password");
+          }}
           isValid={isValidImportMnemonic}
           showValidationError={seedInput.trim().length > 0 && !isValidImportMnemonic}
+          continueDisabled={termsBlocked || !isValidImportMnemonic}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -510,6 +577,8 @@ function RightPanel(props: RightPanelProps) {
           setShow={setShowPwd}
           error={pwdError}
           onContinue={submitPassword}
+          continueDisabled={termsBlocked || password.length === 0}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -522,7 +591,8 @@ function RightPanel(props: RightPanelProps) {
           error={pwdError ?? submitError}
           onContinue={submitConfirm}
           ctaLabel={flow === "import" ? t("onboarding.importSeedPhrase") : t("onboarding.createWallet")}
-          disabled={isSubmitting}
+          disabled={isSubmitting || termsBlocked || confirm.length === 0}
+          disabledTitle={termsDisabledTitle}
         />
       )}
 
@@ -565,7 +635,23 @@ function StepBar({ activeOrder, stepIndex }: { activeOrder: Step[]; stepIndex: n
   );
 }
 
-function ChooseStep({ onCreate, onImport }: { onCreate: () => void; onImport: () => void }) {
+function ChooseStep({
+  termsAccepted,
+  setTermsAccepted,
+  showTermsValidationError,
+  onCreate,
+  onImport,
+  createImportDisabled,
+  disabledTitle,
+}: {
+  termsAccepted: boolean;
+  setTermsAccepted: (value: boolean) => void;
+  showTermsValidationError: boolean;
+  onCreate: () => void;
+  onImport: () => void;
+  createImportDisabled: boolean;
+  disabledTitle: string;
+}) {
   const { t } = useTranslation();
   return (
     <>
@@ -576,6 +662,16 @@ function ChooseStep({ onCreate, onImport }: { onCreate: () => void; onImport: ()
       <p className="mt-2 text-sm text-muted-foreground max-w-sm">
         {t("onboarding.setupWalletSubtitle")}
       </p>
+
+      <TermsAcceptanceField
+        className="mt-6"
+        checked={termsAccepted}
+        onCheckedChange={setTermsAccepted}
+        showValidationError={showTermsValidationError}
+      />
+      {!termsAccepted ? (
+        <p className="text-xs text-muted-foreground">{disabledTitle}</p>
+      ) : null}
 
       <div className="mt-7 space-y-4">
         {[
@@ -596,7 +692,9 @@ function ChooseStep({ onCreate, onImport }: { onCreate: () => void; onImport: ()
             key={opt.title}
             type="button"
             onClick={opt.onClick}
-            className="group w-full flex items-center gap-4 rounded-2xl border border-border bg-background dark:bg-background/50 px-5 py-4 text-left hover:border-brand hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-brand/40 transition"
+            disabled={createImportDisabled}
+            title={createImportDisabled ? disabledTitle : undefined}
+            className="group w-full flex items-center gap-4 rounded-2xl border border-border bg-background dark:bg-background/50 px-5 py-4 text-left hover:border-brand hover:bg-secondary/50 focus:outline-none focus:ring-2 focus:ring-brand/40 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-background dark:disabled:hover:bg-background/50"
           >
             <span className="shrink-0">{opt.icon}</span>
             <span className="flex-1">
@@ -615,16 +713,19 @@ function PrimaryButton({
   children,
   onClick,
   disabled,
+  disabledTitle,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  disabledTitle?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={disabled && disabledTitle ? disabledTitle : undefined}
       className="mt-8 w-full inline-flex items-center justify-center gap-2 rounded-full bg-brand text-brand-foreground font-semibold px-6 py-3.5 hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_10px_30px_-10px_var(--brand)]"
     >
       {children}
@@ -640,6 +741,8 @@ function PhraseStep({
   onContinue,
   words,
   previewError,
+  continueDisabled,
+  disabledTitle,
 }: {
   revealed: boolean;
   setRevealed: (v: boolean) => void;
@@ -648,6 +751,8 @@ function PhraseStep({
   onContinue: () => void;
   words: string[];
   previewError: string | null;
+  continueDisabled: boolean;
+  disabledTitle?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -688,7 +793,11 @@ function PhraseStep({
         <p>{t("onboarding.writeItDown")}</p>
       </div>
 
-      <PrimaryButton onClick={onContinue} disabled={words.length < 12 || !!previewError}>
+      <PrimaryButton
+        onClick={onContinue}
+        disabled={continueDisabled}
+        disabledTitle={disabledTitle}
+      >
         {t("onboarding.iSavedIt")} <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>
@@ -730,6 +839,7 @@ function ConfirmPhraseStep({
   setConfirmWordB,
   onContinue,
   canContinue,
+  disabledTitle,
 }: {
   indexes: readonly [number, number];
   confirmWordA: string;
@@ -738,6 +848,7 @@ function ConfirmPhraseStep({
   setConfirmWordB: (value: string) => void;
   onContinue: () => void;
   canContinue: boolean;
+  disabledTitle?: string;
 }) {
   return (
     <>
@@ -757,7 +868,7 @@ function ConfirmPhraseStep({
         placeholder={`Word ${indexes[1] + 1}`}
         className="mt-3 w-full rounded-full border border-border bg-background px-5 py-3.5"
       />
-      <PrimaryButton onClick={onContinue} disabled={!canContinue}>
+      <PrimaryButton onClick={onContinue} disabled={!canContinue} disabledTitle={disabledTitle}>
         Continue <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>
@@ -808,6 +919,8 @@ function PasswordStep({
   setShow,
   error,
   onContinue,
+  continueDisabled,
+  disabledTitle,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -815,6 +928,8 @@ function PasswordStep({
   setShow: (v: boolean) => void;
   error: string | null;
   onContinue: () => void;
+  continueDisabled: boolean;
+  disabledTitle?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -834,7 +949,11 @@ function PasswordStep({
         autoFocus
       />
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-      <PrimaryButton onClick={onContinue} disabled={value.length === 0}>
+      <PrimaryButton
+        onClick={onContinue}
+        disabled={continueDisabled}
+        disabledTitle={disabledTitle}
+      >
         {t("common.continue")} <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>
@@ -850,6 +969,7 @@ function ConfirmStep({
   onContinue,
   ctaLabel,
   disabled,
+  disabledTitle,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -859,6 +979,7 @@ function ConfirmStep({
   onContinue: () => void;
   ctaLabel?: string;
   disabled?: boolean;
+  disabledTitle?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -878,7 +999,11 @@ function ConfirmStep({
         autoFocus
       />
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-      <PrimaryButton onClick={onContinue} disabled={value.length === 0 || disabled}>
+      <PrimaryButton
+        onClick={onContinue}
+        disabled={disabled}
+        disabledTitle={disabledTitle}
+      >
         {ctaLabel ?? t("onboarding.createWallet")}
       </PrimaryButton>
     </>
@@ -891,12 +1016,16 @@ function ImportStep({
   onContinue,
   isValid,
   showValidationError,
+  continueDisabled,
+  disabledTitle,
 }: {
   value: string;
   onChange: (v: string) => void;
   onContinue: () => void;
   isValid: boolean;
   showValidationError: boolean;
+  continueDisabled: boolean;
+  disabledTitle?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -921,7 +1050,11 @@ function ImportStep({
       {showValidationError ? (
         <p className="mt-2 text-sm text-destructive">Enter a valid BIP-39 recovery phrase.</p>
       ) : null}
-      <PrimaryButton onClick={onContinue} disabled={!isValid}>
+      <PrimaryButton
+        onClick={onContinue}
+        disabled={continueDisabled}
+        disabledTitle={disabledTitle}
+      >
         {t("common.continue")} <ArrowRight className="w-4 h-4" />
       </PrimaryButton>
     </>

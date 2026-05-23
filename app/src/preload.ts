@@ -11,6 +11,9 @@ import type { ChainId } from "./shared/wallet/types";
 import type { SuiChainEnvironment } from "./config/chains/sui";
 
 const api: DestrallApi = {
+  app: {
+    openExternalUrl: (payload) => ipcRenderer.invoke(IPCChannels.appOpenExternalUrl, payload),
+  },
   wallet: {
     getStatus: () => ipcRenderer.invoke(IPCChannels.walletGetStatus),
     previewMnemonic: () => ipcRenderer.invoke(IPCChannels.walletPreviewMnemonic),

@@ -15,6 +15,9 @@ type ProfileRow = {
   name: string;
   created_at: number;
   updated_at: number;
+  accepted_terms: number;
+  accepted_terms_at: number | null;
+  accepted_terms_url: string | null;
 };
 
 type AccountRow = {
@@ -43,6 +46,9 @@ class WalletService {
       name: row.name,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      acceptedTerms: row.accepted_terms === 1,
+      acceptedTermsAt: row.accepted_terms_at,
+      acceptedTermsUrl: row.accepted_terms_url,
     };
   }
 
@@ -145,6 +151,7 @@ class WalletService {
     profileName?: string;
     accountName?: string;
     imported?: boolean;
+    termsAccepted: boolean;
   }): WalletAccount {
     void args.imported;
     return executeCreateOrImportWallet(

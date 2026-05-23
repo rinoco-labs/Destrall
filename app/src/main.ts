@@ -5,6 +5,7 @@ import started from "electron-squirrel-startup";
 import { getBrandingDir, getBrandingRuntimeIconPath } from "./main/lib/brandingPaths";
 import { getDatabase } from "./main/persistence/database";
 import { registerChainIpcHandlers } from "./main/ipc/registerChainIpcHandlers";
+import { registerAppIpcHandlers } from "./main/ipc/registerAppIpcHandlers";
 import { registerWalletIpcHandlers } from "./main/ipc/registerWalletIpcHandlers";
 import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandlers";
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
@@ -88,6 +89,7 @@ app.whenReady().then(() => {
   timezoneSettingsService.initialize();
   registerCorePackages();
   registerChainIpcHandlers();
+  registerAppIpcHandlers();
   registerWalletIpcHandlers();
   registerAiModelIpcHandlers();
   registerAssistantChatIpcHandlers();

@@ -50,6 +50,7 @@ export function registerWalletIpcHandlers() {
           profileName: parsed.data.profileName,
           accountName: parsed.data.accountName,
           imported: false,
+          termsAccepted: parsed.data.termsAccepted,
         }),
       );
     } catch (error) {
@@ -70,6 +71,7 @@ export function registerWalletIpcHandlers() {
           profileName: parsed.data.profileName,
           accountName: parsed.data.accountName,
           imported: true,
+          termsAccepted: parsed.data.termsAccepted,
         }),
       );
     } catch (error) {

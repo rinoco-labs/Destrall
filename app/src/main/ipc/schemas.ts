@@ -8,6 +8,15 @@ export const walletCreateSchema = z.object({
   profileName: z.string().min(1).max(255).optional(),
   accountName: z.string().min(1).max(255).optional(),
   imported: z.boolean().optional(),
+  termsAccepted: z.literal(true, {
+    errorMap: () => ({
+      message: "You must accept the Terms and Conditions before continuing.",
+    }),
+  }),
+});
+
+export const openExternalUrlSchema = z.object({
+  url: z.string().url().max(2048),
 });
 
 export const walletCreateAccountSchema = z.object({

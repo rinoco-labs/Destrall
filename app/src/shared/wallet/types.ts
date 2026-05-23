@@ -5,6 +5,9 @@ export type WalletProfile = {
   name: string;
   createdAt: number;
   updatedAt: number;
+  acceptedTerms: boolean;
+  acceptedTermsAt: number | null;
+  acceptedTermsUrl: string | null;
 };
 
 export type WalletAccount = {

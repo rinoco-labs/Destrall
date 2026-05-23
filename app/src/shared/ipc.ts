@@ -43,6 +43,7 @@ export type WalletCreateRequest = {
   profileName?: string;
   accountName?: string;
   imported?: boolean;
+  termsAccepted: true;
 };
 
 export type LlmInstallStatus =
@@ -116,6 +117,9 @@ export type ChainNetworkStatePayload = NetworkUiSnapshot & {
 };
 
 export type DestrallApi = {
+  app: {
+    openExternalUrl: (payload: { url: string }) => Promise<RpcResult<{ ok: true }>>;
+  };
   wallet: {
     getStatus: () => Promise<RpcResult<WalletStatusSnapshot>>;
     previewMnemonic: () => Promise<RpcResult<string>>;
@@ -328,6 +332,7 @@ export type DestrallApi = {
 };
 
 export const IPCChannels = {
+  appOpenExternalUrl: "app:open-external-url",
   walletGetStatus: "wallet:get-status",
   walletPreviewMnemonic: "wallet:preview-mnemonic",
   walletCreate: "wallet:create",

@@ -63,6 +63,13 @@ const migrations: Migration[] = [
       ensureBrowserFavoritesTable(db);
     },
   },
+  {
+    version: 9,
+    name: "wallet_profile_terms_acceptance",
+    up: (db) => {
+      ensureWalletProfileTermsColumns(db);
+    },
+  },
 ];
 
 export function ensureAssistantChatTables(db: DatabaseSync) {
@@ -267,13 +274,42 @@ export function ensureContactsTable(db: DatabaseSync) {
   `);
 }
 
+export function walletProfileHasAcceptedTermsColumn(db: DatabaseSync): boolean {
+  if (!tableExists(db, "wallet_profile")) return true;
+  const columns = db
+    .prepare(`PRAGMA table_info(wallet_profile)`)
+    .all() as { name: string }[];
+  return columns.some((column) => column.name === "accepted_terms");
+}
+
+export function ensureWalletProfileTermsColumns(db: DatabaseSync) {
+  if (!tableExists(db, "wallet_profile")) return;
+
+  const columns = db
+    .prepare(`PRAGMA table_info(wallet_profile)`)
+    .all() as { name: string }[];
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("accepted_terms")) {
+    db.exec(`ALTER TABLE wallet_profile ADD COLUMN accepted_terms INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!names.has("accepted_terms_at")) {
+    db.exec(`ALTER TABLE wallet_profile ADD COLUMN accepted_terms_at INTEGER`);
+  }
+  if (!names.has("accepted_terms_url")) {
+    db.exec(`ALTER TABLE wallet_profile ADD COLUMN accepted_terms_url TEXT`);
+  }
+}
+
 export function ensureWalletTables(db: DatabaseSync) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS wallet_profile (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      accepted_terms INTEGER NOT NULL DEFAULT 0,
+      accepted_terms_at INTEGER,
+      accepted_terms_url TEXT
     ) STRICT;
     CREATE TABLE IF NOT EXISTS wallet_accounts (
       id TEXT PRIMARY KEY,
@@ -326,7 +362,9 @@ export function runMigrations(db: DatabaseSync) {
     const applied = hasMigration.get(migration.version);
     const needsRepair =
       migration.version === 1 && !tableExists(db, "wallet_accounts");
-    if (!applied || needsRepair) {
+    const needsTermsColumnsRepair =
+      migration.version === 9 && !walletProfileHasAcceptedTermsColumn(db);
+    if (!applied || needsRepair || needsTermsColumnsRepair) {
       migration.up(db);
       if (!applied) {
         insertMigration.run(migration.version, migration.name, Date.now());
@@ -335,6 +373,7 @@ export function runMigrations(db: DatabaseSync) {
   }
 
   ensureWalletTables(db);
+  ensureWalletProfileTermsColumns(db);
   ensureLlmModelTables(db);
   ensureAssistantChatTables(db);
   ensureContactsTable(db);

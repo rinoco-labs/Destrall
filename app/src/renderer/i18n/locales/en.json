@@ -66,7 +66,11 @@
     "downloading": "Downloading…",
     "modelDownloaded": "Model downloaded",
     "continueToHome": "Continue to Home",
-    "skipForNow": "Skip for now"
+    "skipForNow": "Skip for now",
+    "termsPrefix": "I have read and agree to the",
+    "termsLink": "Terms and Conditions",
+    "termsRequired": "You must accept the Terms and Conditions before continuing.",
+    "termsDisabledHint": "Accept the Terms and Conditions to continue."
   },
   "settings": {
     "title": "Settings",
