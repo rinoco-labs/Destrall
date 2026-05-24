@@ -25,6 +25,7 @@ import { SelectModal } from "@/components/settings/SelectModal";
 import { AutoLockModal } from "@/components/settings/AutoLockModal";
 import { RecoveryPhraseModal } from "@/components/settings/RecoveryPhraseModal";
 import { AiModelModal } from "@/components/settings/AiModelModal";
+import { AppUpdatesSection } from "@/components/settings/AppUpdatesSection";
 import {
   useSettingsStore,
   SUPPORTED_LANGUAGES,
@@ -281,7 +282,6 @@ function SettingsPage() {
             <span className="flex-1 text-sm font-medium">Assistant Tools</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground/60" />
           </Link>
-          <SettingRow icon={Info} label={t("settings.version")} value="1.0.0" />
         </div>
 
         {/* Security */}
@@ -325,6 +325,13 @@ function SettingsPage() {
             value={personalityLabel}
             onClick={() => setOpenModal("personality")}
           />
+        </div>
+
+        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-3 px-1">
+          App updates
+        </p>
+        <div className="mb-8">
+          <AppUpdatesSection />
         </div>
 
         <div className="mt-10 mb-12">

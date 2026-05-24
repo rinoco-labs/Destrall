@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow, WebContentsView, ipcMain } from "electron";
 import { buildWalletStandardInjectionForNetwork } from "../../browser/injections/injectionBuilder";
 import { IPCChannels } from "../../shared/ipc";
 import type { DestrallWalletBridgeRequest } from "../../browser/types/browser.types";
+import { criticalFlowService } from "../services/security/criticalFlowService";
 import { networkSettingsService } from "../services/network/networkSettingsService";
 import { clearSuiClientCache } from "../services/chains/sui/sui-client.service";
 
@@ -54,6 +55,7 @@ export class NativeBrowserViewManager {
     if (hideForSigning && this.nativeView) {
       this.setVisible(false);
     }
+    criticalFlowService.register("browser_dapp_request");
     this.window.webContents.send(IPCChannels.nativeBrowserWalletRequest, payload);
   };
 
@@ -204,6 +206,7 @@ export class NativeBrowserViewManager {
     if (error) {
       console.warn(NativeBrowserViewManager.LOG_PREFIX, "wallet resolve error", id, error);
     }
+    criticalFlowService.unregister("browser_dapp_request");
   }
 
   persistAuthorizedAccounts(

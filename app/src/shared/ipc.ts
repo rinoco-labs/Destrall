@@ -1,4 +1,6 @@
 import type { AssistantChatRow, AssistantMessageRow } from "./assistantChat";
+import type { CriticalFlowType } from "./criticalFlows";
+import type { UpdateInfo } from "./update";
 import type { WalletAccount, WalletStatusSnapshot, ChainId } from "./wallet/types";
 import type {
   ChainActivityPage,
@@ -119,6 +121,20 @@ export type ChainNetworkStatePayload = NetworkUiSnapshot & {
 export type DestrallApi = {
   app: {
     openExternalUrl: (payload: { url: string }) => Promise<RpcResult<{ ok: true }>>;
+  };
+  updates: {
+    check: () => Promise<RpcResult<UpdateInfo>>;
+    download: () => Promise<RpcResult<UpdateInfo>>;
+    openDownloaded: () => Promise<RpcResult<UpdateInfo>>;
+    revealDownloaded: () => Promise<RpcResult<UpdateInfo>>;
+    openReleasePage: () => Promise<RpcResult<UpdateInfo>>;
+    getStatus: () => Promise<RpcResult<UpdateInfo>>;
+    cancelDownload: () => Promise<RpcResult<UpdateInfo>>;
+    onStatusChanged: (listener: (status: UpdateInfo) => void) => () => void;
+  };
+  criticalFlow: {
+    register: (flow: CriticalFlowType) => Promise<RpcResult<{ ok: true }>>;
+    unregister: (flow: CriticalFlowType) => Promise<RpcResult<{ ok: true }>>;
   };
   wallet: {
     getStatus: () => Promise<RpcResult<WalletStatusSnapshot>>;
@@ -333,6 +349,16 @@ export type DestrallApi = {
 
 export const IPCChannels = {
   appOpenExternalUrl: "app:open-external-url",
+  updateCheck: "update:check",
+  updateDownload: "update:download",
+  updateOpenDownloaded: "update:open-downloaded",
+  updateRevealDownloaded: "update:reveal-downloaded",
+  updateOpenReleasePage: "update:open-release-page",
+  updateGetStatus: "update:get-status",
+  updateCancelDownload: "update:cancel-download",
+  updateStatusChanged: "update:status-changed",
+  criticalFlowRegister: "critical-flow:register",
+  criticalFlowUnregister: "critical-flow:unregister",
   walletGetStatus: "wallet:get-status",
   walletPreviewMnemonic: "wallet:preview-mnemonic",
   walletCreate: "wallet:create",

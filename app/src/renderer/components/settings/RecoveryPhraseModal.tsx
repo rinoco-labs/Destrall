@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { desktopViewSeedPhrase, isDestrallDesktop } from "@/lib/desktopWallet";
+import { useCriticalFlow } from "@/hooks/useCriticalFlow";
 
 type Props = {
   open: boolean;
@@ -27,6 +28,8 @@ export function RecoveryPhraseModal({ open, onOpenChange }: Props) {
   const [copied, setCopied] = useState(false);
   const [words, setWords] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useCriticalFlow("viewing_seed_phrase", open && step === "phrase");
 
   useEffect(() => {
     if (!open) {

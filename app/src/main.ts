@@ -11,6 +11,7 @@ import { registerAiModelIpcHandlers } from "./main/ipc/registerAiModelIpcHandler
 import { registerAssistantChatIpcHandlers } from "./main/ipc/registerAssistantChatIpcHandlers";
 import { registerTriggersIpcHandlers } from "./main/ipc/registerTriggersIpcHandlers";
 import { registerBrowserIpcHandlers } from "./main/ipc/registerBrowserIpcHandlers";
+import { registerUpdateIpcHandlers } from "./main/ipc/registerUpdateIpcHandlers";
 import { attachNativeBrowserToWindow } from "./main/browser/nativeBrowserViewManager";
 import { startTriggerScheduler } from "./packages/core/triggers/triggerScheduler";
 import { timezoneSettingsService } from "./services/time/timezone.service";
@@ -95,6 +96,7 @@ app.whenReady().then(() => {
   registerAssistantChatIpcHandlers();
   registerTriggersIpcHandlers();
   registerBrowserIpcHandlers();
+  registerUpdateIpcHandlers();
   startTriggerScheduler();
   void aiModelMainService.restoreFromPersistence().catch((err) => {
     console.error("[llm] Startup restore failed", err);

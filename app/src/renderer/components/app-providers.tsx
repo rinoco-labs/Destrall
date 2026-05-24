@@ -8,6 +8,7 @@ import {
 } from "@/stores/settingsStore";
 import { isDestrallDesktop } from "@/lib/desktopWallet";
 import { useAiModelStore } from "@/stores/aiModelStore";
+import { useUpdateBootstrap } from "@/hooks/useUpdateBootstrap";
 
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === "undefined") return "dark";
@@ -32,6 +33,7 @@ export function AppProviders(): null {
   const hasHydrated = useSettingsStore((s) => s.hasHydrated);
   const setResolvedTheme = useSettingsStore((s) => s.setResolvedTheme);
   const initializeModel = useAiModelStore((s) => s.initializeModel);
+  useUpdateBootstrap();
 
   useEffect(() => {
     if (!isDestrallDesktop()) return;

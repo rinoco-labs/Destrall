@@ -14,7 +14,11 @@ Native modules (for example `node-llama-cpp`) are rebuilt for the target archite
 
 ## macOS distribution format
 
-macOS releases are **ZIP only** (`.app` inside a zip). The Forge DMG maker (`appdmg` / `macos-alias`) is **not used**: those packages rely on unmaintained native addons that **fail to compile on Node 25+**. Users can unzip and drag `Destrall.app` to Applications, or you can wrap the zip in a DMG with a separate tool later.
+macOS releases use **DMG** installers in CI (`hdiutil` wraps the packaged `.app`). The Forge DMG maker (`appdmg` / `macos-alias`) is **not used**: those packages rely on unmaintained native addons that **fail to compile on Node 25+**. A **ZIP** fallback is also published and accepted by the in-app updater.
+
+## In-app updates
+
+The desktop app checks GitHub Releases and downloads the correct asset for the user’s OS/architecture. Users open the installer manually; nothing is auto-installed. See [`docs/update-service.md`](../docs/update-service.md).
 
 ## Scripts
 
@@ -37,7 +41,7 @@ Installers and archives are written under **`app/out/make/`**, grouped by maker 
 
 | Platform | Typical paths |
 |----------|----------------|
-| macOS arm64 / x64 | `out/make/zip/darwin/<arch>/Destrall-darwin-<arch>-<version>.zip` |
+| macOS arm64 / x64 | `out/make/zip/darwin/<arch>/…zip`; CI also uploads `Destrall-mac-<arch>.dmg` |
 | Windows x64 | `out/make/squirrel.windows/x64/`, `out/make/zip/win32/x64/` |
 | Linux x64 | `out/make/deb/x64/`, `out/make/rpm/x64/`, `out/make/zip/linux/x64/` |
 

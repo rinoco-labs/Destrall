@@ -1,4 +1,4 @@
-# Destrall / Vault
+# Destrall
 
 **Vault** is a **local-first, self-custody desktop crypto wallet** with an **on-device AI assistant** and a **declarative extension system** (packages). **Destrall** is the implementation: an Electron app built with React, TypeScript, and Vite.
 
@@ -21,12 +21,12 @@ For full architecture, security rules, IPC expectations, storage layout, package
 
 ## Repository layout (high level)
 
-| Path | Purpose |
-|------|---------|
-| `app/` | Electron desktop app (Forge, Vite, React) |
-| `.cursor/rules/` | Agent rules (e.g. always consult source-of-truth) |
-| `.cursor/source-of-truth/` | Canonical product and engineering reference |
-| `source-of-truth/` | Same documents at repo root (e.g. for browsing on Git); keep in lockstep with `.cursor/source-of-truth/` |
+| Path                       | Purpose                                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `app/`                     | Electron desktop app (Forge, Vite, React)                                                                |
+| `.cursor/rules/`           | Agent rules (e.g. always consult source-of-truth)                                                        |
+| `.cursor/source-of-truth/` | Canonical product and engineering reference                                                              |
+| `source-of-truth/`         | Same documents at repo root (e.g. for browsing on Git); keep in lockstep with `.cursor/source-of-truth/` |
 
 When behavior or scope changes, update the relevant markdown under **`.cursor/source-of-truth/`** in the same change as the code so documentation and implementation stay aligned.
 
@@ -34,9 +34,10 @@ When behavior or scope changes, update the relevant markdown under **`.cursor/so
 
 Development and packaging live under **`app/`**. From that directory:
 
-- **`npm run make`** — cleans `out/`, then builds macOS arm64, macOS x64, Windows x64, and Linux x64 in sequence (each target uses explicit `--platform` / `--arch`).
+- **`npm run make`** — runs Electron Forge make for the current host (pass `--platform` / `--arch` for cross-builds).
+- **`npm run make:all`** — cleans `out/`, then builds macOS arm64, macOS x64, Windows x64, and Linux x64 in sequence.
 - **`npm run make:mac:arm64`** (and other `make:*` scripts) — build a single platform/architecture.
 
-Artifacts are written to **`app/out/make/`** (ZIP, DMG, Squirrel, deb, rpm, depending on the target). Full script tables, local limitations, and CI guidance are in **`app/BUILDING.md`**.
+**Recommended for all four OS targets:** run the GitHub Actions workflow [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds macOS (arm64 + x64), Windows, and Linux on native runners and publishes predictably named installers to GitHub Releases. See [`docs/update-service.md`](docs/update-service.md) for asset names and the in-app manual update flow.
 
-**Recommended for all four OS targets:** run the GitHub Actions workflow [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds macOS on `macos-latest`, Windows on `windows-latest`, and Linux on `ubuntu-latest`. A single-machine `npm run make` on macOS typically completes Apple Silicon and Intel macOS builds but fails when Windows or Linux packaging tools are unavailable — that is expected; use CI for those artifacts.
+Artifacts are written to **`app/out/make/`** (ZIP, Squirrel `.exe`, deb, rpm; macOS CI also produces `.dmg`). Full script tables and local limitations are in **`app/BUILDING.md`**.

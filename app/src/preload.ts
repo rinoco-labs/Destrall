@@ -4,8 +4,10 @@ import {
   type AssistantChatRequest,
   type DestrallApi,
   type ModelProgressEvent,
+  type UpdateInfo,
   type WalletCreateRequest,
 } from "./shared/ipc";
+import type { CriticalFlowType } from "./shared/criticalFlows";
 import type { DailyBriefAssistantMemoryPayload } from "./shared/dailyBriefMemory";
 import type { ChainId } from "./shared/wallet/types";
 import type { SuiChainEnvironment } from "./config/chains/sui";
@@ -13,6 +15,28 @@ import type { SuiChainEnvironment } from "./config/chains/sui";
 const api: DestrallApi = {
   app: {
     openExternalUrl: (payload) => ipcRenderer.invoke(IPCChannels.appOpenExternalUrl, payload),
+  },
+  updates: {
+    check: () => ipcRenderer.invoke(IPCChannels.updateCheck),
+    download: () => ipcRenderer.invoke(IPCChannels.updateDownload),
+    openDownloaded: () => ipcRenderer.invoke(IPCChannels.updateOpenDownloaded),
+    revealDownloaded: () => ipcRenderer.invoke(IPCChannels.updateRevealDownloaded),
+    openReleasePage: () => ipcRenderer.invoke(IPCChannels.updateOpenReleasePage),
+    getStatus: () => ipcRenderer.invoke(IPCChannels.updateGetStatus),
+    cancelDownload: () => ipcRenderer.invoke(IPCChannels.updateCancelDownload),
+    onStatusChanged: (listener: (status: UpdateInfo) => void) => {
+      const wrapped = (_: unknown, data: UpdateInfo) => listener(data);
+      ipcRenderer.on(IPCChannels.updateStatusChanged, wrapped);
+      return () => {
+        ipcRenderer.removeListener(IPCChannels.updateStatusChanged, wrapped);
+      };
+    },
+  },
+  criticalFlow: {
+    register: (flow: CriticalFlowType) =>
+      ipcRenderer.invoke(IPCChannels.criticalFlowRegister, { flow }),
+    unregister: (flow: CriticalFlowType) =>
+      ipcRenderer.invoke(IPCChannels.criticalFlowUnregister, { flow }),
   },
   wallet: {
     getStatus: () => ipcRenderer.invoke(IPCChannels.walletGetStatus),

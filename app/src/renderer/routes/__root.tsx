@@ -10,6 +10,7 @@ import "@/i18n";
 import { AppProviders } from "@/components/app-providers";
 import { WalletGate } from "@/components/wallet-gate";
 import { NetworkWalletQuerySync } from "@/components/network-wallet-query-sync";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 function NotFoundComponent() {
   return (
@@ -81,6 +82,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <NetworkWalletQuerySync />
       <AppProviders />
+      <UpdateBanner />
       <WalletGate>
         <Outlet />
       </WalletGate>

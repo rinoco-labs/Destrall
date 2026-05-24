@@ -7,6 +7,7 @@ import { shortAddr } from "@/lib/wallet-store";
 import { useWalletStore, getActiveWalletAccount } from "@/stores/walletStore";
 import { useNetworkStore } from "@/stores/networkStore";
 import { desktopGetChainBalances, desktopPrepareTransfer, desktopConfirmTransfer } from "@/lib/desktopChain";
+import { useCriticalFlow } from "@/hooks/useCriticalFlow";
 import { desktopListContacts } from "@/lib/desktopContacts";
 import type { ContactRow } from "../../shared/ipc";
 import { chainQueryScope } from "@/components/network-wallet-query-sync";
@@ -55,6 +56,9 @@ function SendPage() {
     amountFormatted: string;
     symbol: string;
   } | null>(null);
+
+  useCriticalFlow("approving_send_proposal", step === "review");
+  useCriticalFlow("signing_transaction", submitting);
 
   useEffect(() => {
     void desktopListContacts().then(setContacts);

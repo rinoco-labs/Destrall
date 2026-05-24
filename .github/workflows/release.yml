@@ -1,86 +1,156 @@
-# Build Destrall desktop installers on the correct OS for each target.
-# Electron Forge can cross-package in some cases, but makers (DMG, Squirrel, deb/rpm)
-# require native tooling on matching runners.
-name: Release builds
+name: Release Desktop App
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-macos:
-    name: macOS (arm64 + x64)
-    runs-on: macos-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            artifact_name: Destrall-mac-arm64
+          - os: macos-13
+            platform: darwin
+            arch: x64
+            artifact_name: Destrall-mac-x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            artifact_name: Destrall-windows-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            artifact_name: Destrall-linux-x64
+
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: app
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '25'
+          node-version: "25"
           cache: npm
           cache-dependency-path: app/package-lock.json
-      - run: npm ci
-      - run: npm run make:mac:arm64
-      - run: npm run make:mac:x64
-      - uses: actions/upload-artifact@v4
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y dpkg fakeroot rpm libfuse2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Make Electron app
+        run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+
+      - name: Prepare artifacts on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          APP_PATH="$(find out -type d -name '*.app' -maxdepth 3 | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not find packaged .app bundle under out/"
+            find out -maxdepth 4 -print
+            exit 1
+          fi
+          hdiutil create -volname "Destrall" -srcfolder "$APP_PATH" -ov -format UDZO \
+            "release-artifacts/${{ matrix.artifact_name }}.dmg"
+          ZIP_FILE="$(find out/make -type f -name '*.zip' | head -n 1 || true)"
+          if [ -n "$ZIP_FILE" ]; then
+            cp "$ZIP_FILE" "release-artifacts/${{ matrix.artifact_name }}.zip"
+          fi
+
+      - name: Prepare artifacts on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts | Out-Null
+          Get-ChildItem -Path out/make -Recurse -File | Where-Object {
+            $_.Extension -in ".exe", ".msi", ".zip"
+          } | ForEach-Object { Write-Output $_.FullName }
+
+          $exe = Get-ChildItem -Path out/make -Recurse -File -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) {
+            throw "No Windows installer (.exe) found under out/make"
+          }
+          Copy-Item $exe.FullName "release-artifacts/${{ matrix.artifact_name }}.exe"
+
+      - name: Prepare artifacts on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          APPIMAGE_FILE="$(find out/make -type f -name '*.AppImage' | head -n 1 || true)"
+          DEB_FILE="$(find out/make -type f -name '*.deb' | head -n 1 || true)"
+          RPM_FILE="$(find out/make -type f -name '*.rpm' | head -n 1 || true)"
+
+          if [ -n "$APPIMAGE_FILE" ]; then
+            cp "$APPIMAGE_FILE" "release-artifacts/${{ matrix.artifact_name }}.AppImage"
+          fi
+          if [ -n "$DEB_FILE" ]; then
+            cp "$DEB_FILE" "release-artifacts/${{ matrix.artifact_name }}.deb"
+          fi
+          if [ -n "$RPM_FILE" ]; then
+            cp "$RPM_FILE" "release-artifacts/${{ matrix.artifact_name }}.rpm"
+          fi
+
+          if [ ! -f "release-artifacts/${{ matrix.artifact_name }}.deb" ] && [ ! -f "release-artifacts/${{ matrix.artifact_name }}.rpm" ]; then
+            echo "No Linux package artifacts found"
+            find out/make -type f -print
+            exit 1
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: destrall-macos
-          path: app/out/make/zip/darwin/**
+          name: ${{ matrix.artifact_name }}
+          path: app/release-artifacts/*
           if-no-files-found: error
 
-  build-windows:
-    name: Windows x64
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '25'
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-      - run: npm ci
-      - run: npm run make:win:x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: destrall-windows
-          path: |
-            app/out/make/squirrel.windows/**
-            app/out/make/zip/win32/**
-          if-no-files-found: error
-
-  build-linux:
-    name: Linux x64
+  release:
+    needs: build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: '25'
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-      - name: Install packaging tools for deb/rpm makers
-        run: sudo apt-get update && sudo apt-get install -y dpkg fakeroot rpm
-      - run: npm ci
-      - run: npm run make:linux:x64
-      - uses: actions/upload-artifact@v4
+          path: downloaded-artifacts
+
+      - name: Display artifacts
+        run: find downloaded-artifacts -type f -maxdepth 3 -print
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: destrall-linux
-          path: |
-            app/out/make/deb/**
-            app/out/make/rpm/**
-            app/out/make/zip/linux/**
-          if-no-files-found: error
+          files: downloaded-artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

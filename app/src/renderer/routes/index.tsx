@@ -20,6 +20,7 @@ import {
 import { SelectModal } from "@/components/settings/SelectModal";
 import { Progress } from "@/components/ui/progress";
 import { useTheme } from "@/hooks/use-theme";
+import { useCriticalFlow } from "@/hooks/useCriticalFlow";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 import {
   useSettingsStore,
@@ -121,6 +122,19 @@ function Index() {
     const second = Math.min(creationWords.length - 1, 8);
     return [first, second] as const;
   }, [creationWords.length]);
+
+  const isCreatingWallet =
+    flow === "create" && !["choose", "created", "model"].includes(step);
+  const isImportingWallet =
+    flow === "import" && !["choose", "created", "model"].includes(step);
+  const isEnteringSeedPhrase = step === "import" || step === "confirm-phrase";
+  const isViewingSeedPhrase =
+    flow === "create" && (step === "phrase" || step === "confirm-phrase") && revealed;
+
+  useCriticalFlow("creating_wallet", isCreatingWallet);
+  useCriticalFlow("importing_wallet", isImportingWallet);
+  useCriticalFlow("entering_seed_phrase", isEnteringSeedPhrase);
+  useCriticalFlow("viewing_seed_phrase", isViewingSeedPhrase);
 
   useEffect(() => {
     if (step !== "model" || !isDestrallDesktop()) return;

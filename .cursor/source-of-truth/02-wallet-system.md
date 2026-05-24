@@ -15,6 +15,7 @@ The **wallet engine** is the **trusted execution layer** for custody and chain o
 - **Create**: Generate or accept entropy per product policy; persist encrypted wallet blob; never log raw mnemonic.
 - **Import**: Accept mnemonic or hardware-backed flows as designed; same persistence rules.
 - **Accounts**: Derivation indices, labels, and per-account settings are metadata in SQLite or equivalent; they **do not** replace encrypted key storage rules.
+- **Terms and Conditions**: Before create or import, the user must explicitly accept the current Terms URL (`https://destrall.com/terms-and-conditions`) in onboarding UI. Acceptance is enforced in renderer handlers, IPC validation (`termsAccepted: true`), and `executeCreateOrImportWallet`. Metadata is written to `wallet_profile` only after a successful create/import: `accepted_terms`, `accepted_terms_at`, `accepted_terms_url`.
 
 All flows that touch a **mnemonic** must be **short-lived in memory** and **user-initiated**; renderer never receives long-lived seed strings except through dedicated, audited IPC during create/import **only** if unavoidable—and prefer passing through UI layers that still never persist them in renderer storage.
 

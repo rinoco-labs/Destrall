@@ -39,7 +39,7 @@ import {
   desktopAssistantChatAddMessage,
   desktopAssistantResolveContactDisambiguation,
 } from "@/lib/desktopAssistantChat";
-import { Loader2, Users, Zap } from "lucide-react";
+import { PendingProposalCriticalFlows } from "@/components/PendingProposalCriticalFlows";
 import { Button } from "@/components/ui/button";
 import {
   desktopTriggersApprove,
@@ -482,6 +482,7 @@ export function AssistantStructuredMessageRenderer({
 
   return (
     <div className="space-y-3">
+      <PendingProposalCriticalFlows blocks={blocks} />
       {blocks.map((b, i) => (
         <Fragment
           key={
