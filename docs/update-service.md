@@ -51,7 +51,7 @@ If a tag such as `v0.0.1` already exists (for example from a manual tag before C
 Build targets (each on a **native** runner so `node-llama-cpp` prebuilt binaries match the artifact):
 
 - macOS arm64 — `macos-latest` (Apple Silicon)
-- macOS x64 — `macos-13` (Intel; x64 cannot be reliably packaged from arm64 hosts)
+- macOS x64 — `macos-15-intel` (Intel; x64 cannot be reliably packaged from arm64 hosts)
 - Windows x64 — `windows-latest`
 - Linux x64 — `ubuntu-latest` (deb/rpm; AppImage when the maker produces one)
 

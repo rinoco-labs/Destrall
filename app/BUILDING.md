@@ -22,7 +22,7 @@ Destrall uses [node-llama-cpp](https://node-llama-cpp.withcat.ai/) for on-device
 | **Vite external** | `vite.main.config.ts` lists `node-llama-cpp` in `rollupOptions.external` so it is not bundled into `.vite/build/main.js`. |
 | **ASAR unpack** | Native binaries and the module’s on-disk layout must live under `app.asar.unpacked/node_modules/…`, not only inside `app.asar`. |
 | **Forge `packageAfterPrune`** | Electron Forge + Vite does not copy `node_modules` by default; `forge.config.ts` runs `npm install` for external main packages after prune. |
-| **Native CI runners** | Prebuilt binaries are platform-specific. Release builds use `macos-latest` (arm64), `macos-13` (x64), `windows-latest`, and `ubuntu-latest` — not cross-compiled from a single host. |
+| **Native CI runners** | Prebuilt binaries are platform-specific. Release builds use `macos-latest` (arm64), `macos-15-intel` (x64), `windows-latest`, and `ubuntu-latest` — not cross-compiled from a single host. |
 
 ### Verify a release build locally
 

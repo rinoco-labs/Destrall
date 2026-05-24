@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { expectedNodeLlamaPlatformPackage } from "./llama-platform-package.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, "..");
@@ -90,6 +91,20 @@ function hasNodeLlamaCpp(dir) {
   return false;
 }
 
+function findMainJsEntry(asar, asarPath) {
+  const files = asar.listPackage(asarPath, { isPack: false });
+  const normalized = files.map((f) => f.replace(/\\/g, "/"));
+  const exact = normalized.find((f) => f === ".vite/build/main.js" || f.endsWith("/.vite/build/main.js"));
+  if (exact) {
+    return exact.startsWith("/") ? exact.slice(1) : exact;
+  }
+  const fallback = normalized.find((f) => f.includes(".vite") && f.endsWith("/main.js"));
+  if (fallback) {
+    return fallback.startsWith("/") ? fallback.slice(1) : fallback;
+  }
+  return null;
+}
+
 function mainJsLooksExternalized(mainJsPath) {
   const text = fs.readFileSync(mainJsPath, "utf8");
   if (text.includes('from"node-llama-cpp"') || text.includes("from 'node-llama-cpp'")) {
@@ -99,6 +114,38 @@ function mainJsLooksExternalized(mainJsPath) {
     return true;
   }
   return !text.includes("node-llama-cpp/dist/");
+}
+
+function inferPlatformArchFromPackagerDir(resourcesDir) {
+  const parts = resourcesDir.split(path.sep);
+  const folder = parts.find((p) => p.startsWith("Destrall-"));
+  if (!folder) return null;
+  const match = /^Destrall-(darwin|win32|linux)-(arm64|x64)$/.exec(folder);
+  if (!match) return null;
+  return { platform: match[1], arch: match[2] };
+}
+
+function verifyLlamaPlatformBinaries(unpackedModules, platform, arch) {
+  const expected = expectedNodeLlamaPlatformPackage(platform, arch);
+  if (!expected) return;
+
+  const scoped = path.join(unpackedModules, "@node-llama-cpp");
+  if (!fs.existsSync(scoped)) {
+    fail(`missing ${scoped}`);
+  }
+  const installed = fs.readdirSync(scoped);
+  if (!installed.includes(expected)) {
+    fail(
+      `expected @node-llama-cpp/${expected} for ${platform}/${arch}, found: ${installed.join(", ") || "(none)"}`,
+    );
+  }
+  const foreign = installed.filter((name) => name !== expected);
+  if (foreign.length > 0) {
+    fail(
+      `foreign @node-llama-cpp packages for ${platform}/${arch}: ${foreign.join(", ")} (expected only ${expected})`,
+    );
+  }
+  ok(`@node-llama-cpp/${expected} matches target ${platform}/${arch}`);
 }
 
 function verifyResources(resourcesDir) {
@@ -123,6 +170,11 @@ function verifyResources(resourcesDir) {
   }
   ok(`node-llama-cpp present in ${unpackedModules}`);
 
+  const target = inferPlatformArchFromPackagerDir(resourcesDir);
+  if (target) {
+    verifyLlamaPlatformBinaries(unpackedModules, target.platform, target.arch);
+  }
+
   let asar;
   try {
     asar = require("@electron/asar");
@@ -130,9 +182,14 @@ function verifyResources(resourcesDir) {
     fail("install @electron/asar (devDependency) to inspect app.asar");
   }
 
-  const mainJsRel = ".vite/build/main.js";
-  const mainJs = asar.extractFile(asarPath, mainJsRel);
-  if (!mainJs) {
+  const mainJsRel = findMainJsEntry(asar, asarPath);
+  if (!mainJsRel) {
+    fail("could not find main.js under .vite/build in app.asar");
+  }
+  let mainJs;
+  try {
+    mainJs = asar.extractFile(asarPath, mainJsRel);
+  } catch {
     fail(`could not read ${mainJsRel} from app.asar`);
   }
   const mainJsPath = path.join(resourcesDir, "_verify_main.js");

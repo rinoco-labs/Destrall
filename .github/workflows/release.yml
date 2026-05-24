@@ -183,7 +183,8 @@ jobs:
     name: macOS x64
     needs: resolve-release
     if: needs.resolve-release.outputs.should_release == 'true'
-    runs-on: macos-13
+    # macos-13 is retired; Intel macOS builds use the dedicated x64 runner image.
+    runs-on: macos-15-intel
     defaults:
       run:
         working-directory: app

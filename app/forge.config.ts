@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { expectedNodeLlamaPlatformPackage } from './scripts/llama-platform-package.mjs';
 
 /** Must match vite.main.config.ts rollup externals — installed into the staged app after prune. */
 const MAIN_PROCESS_EXTERNAL_PACKAGES = ['node-llama-cpp'] as const;
@@ -38,11 +39,32 @@ function runNpm(args: string[], cwd: string): Promise<void> {
  * Installs only external main-process packages (and their deps) into the staged app.
  * Uses a stub package.json so npm does not pull every production dependency from Destrall.
  */
-async function installExternalMainPackages(buildPath: string): Promise<void> {
+function pruneForeignLlamaBinaries(modulesDir: string, platform: string, arch: string): void {
+  const keep = expectedNodeLlamaPlatformPackage(platform, arch);
+  if (!keep) return;
+
+  const scopedDir = path.join(modulesDir, '@node-llama-cpp');
+  if (!fs.existsSync(scopedDir)) return;
+
+  for (const entry of fs.readdirSync(scopedDir)) {
+    if (entry !== keep) {
+      fs.rmSync(path.join(scopedDir, entry), { recursive: true, force: true });
+    }
+  }
+}
+
+async function installExternalMainPackages(
+  buildPath: string,
+  platform: string,
+  arch: string,
+): Promise<void> {
   const specs = MAIN_PROCESS_EXTERNAL_PACKAGES.map((name) => {
     const version = packageJson.dependencies?.[name];
     return version ? `${name}@${version}` : name;
   });
+
+  const npmOs = platform;
+  const npmCpu = arch === 'universal' ? 'arm64' : arch;
 
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'destrall-forge-llm-'));
   try {
@@ -50,12 +72,28 @@ async function installExternalMainPackages(buildPath: string): Promise<void> {
       path.join(tmpDir, 'package.json'),
       JSON.stringify({ name: 'destrall-forge-llm-stub', private: true }, null, 2),
     );
-    await runNpm(['install', '--omit=dev', '--no-package-lock', ...specs], tmpDir);
+    await runNpm(
+      [
+        'install',
+        '--omit=dev',
+        '--no-package-lock',
+        `--os=${npmOs}`,
+        `--cpu=${npmCpu}`,
+        ...specs,
+      ],
+      tmpDir,
+    );
 
     const srcModules = path.join(tmpDir, 'node_modules');
+    pruneForeignLlamaBinaries(srcModules, platform, arch);
+
     const destModules = path.join(buildPath, 'node_modules');
     await fs.promises.mkdir(destModules, { recursive: true });
     await fs.promises.cp(srcModules, destModules, { recursive: true, force: true });
+    pruneForeignLlamaBinaries(destModules, platform, arch);
+
+    const keep = expectedNodeLlamaPlatformPackage(platform, arch);
+    console.info(`[forge] node-llama-cpp installed for ${platform}/${arch} (keep @node-llama-cpp/${keep})`);
   } finally {
     await fs.promises.rm(tmpDir, { recursive: true, force: true });
   }
@@ -100,8 +138,8 @@ const config: ForgeConfig = {
      * External main-process packages (see vite.main.config.ts) must be installed here.
      * @see https://node-llama-cpp.withcat.ai/guide/electron
      */
-    packageAfterPrune: async (_config, buildPath) => {
-      await installExternalMainPackages(buildPath);
+    packageAfterPrune: async (_config, buildPath, _electronVersion, platform, arch) => {
+      await installExternalMainPackages(buildPath, platform, arch);
     },
   },
   packagerConfig: {
