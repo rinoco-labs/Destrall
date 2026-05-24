@@ -91,17 +91,51 @@ function hasNodeLlamaCpp(dir) {
   return false;
 }
 
-function findMainJsEntry(asar, asarPath) {
-  const files = asar.listPackage(asarPath, { isPack: false });
-  const normalized = files.map((f) => f.replace(/\\/g, "/"));
-  const exact = normalized.find((f) => f === ".vite/build/main.js" || f.endsWith("/.vite/build/main.js"));
+function findMainJsEntry(files) {
+  const matchesMainBuild = (file) => {
+    const normalized = file.replace(/\\/g, "/").replace(/^\//, "");
+    return normalized === ".vite/build/main.js" || normalized.endsWith("/.vite/build/main.js");
+  };
+  const exact = files.find(matchesMainBuild);
   if (exact) {
-    return exact.startsWith("/") ? exact.slice(1) : exact;
+    return exact;
   }
-  const fallback = normalized.find((f) => f.includes(".vite") && f.endsWith("/main.js"));
-  if (fallback) {
-    return fallback.startsWith("/") ? fallback.slice(1) : fallback;
+  const fallback = files.find((file) => {
+    const normalized = file.replace(/\\/g, "/");
+    return normalized.includes(".vite") && normalized.endsWith("/main.js");
+  });
+  return fallback ?? null;
+}
+
+function extractMainJsFromAsar(asar, asarPath, mainJsRel, files) {
+  const candidates = new Set([mainJsRel]);
+  const normalized = mainJsRel.replace(/\\/g, "/");
+  candidates.add(normalized);
+  candidates.add(normalized.replace(/^\//, ""));
+  if (process.platform === "win32") {
+    candidates.add(normalized.replace(/\//g, "\\"));
+    candidates.add(`\\${normalized.replace(/^\//, "").replace(/\//g, "\\")}`);
   }
+
+  for (const candidate of candidates) {
+    try {
+      return asar.extractFile(asarPath, candidate);
+    } catch {
+      /* try next candidate */
+    }
+  }
+
+  for (const file of files) {
+    const norm = file.replace(/\\/g, "/");
+    if (norm.includes(".vite") && norm.endsWith("/main.js")) {
+      try {
+        return asar.extractFile(asarPath, file);
+      } catch {
+        /* try next */
+      }
+    }
+  }
+
   return null;
 }
 
@@ -182,14 +216,13 @@ function verifyResources(resourcesDir) {
     fail("install @electron/asar (devDependency) to inspect app.asar");
   }
 
-  const mainJsRel = findMainJsEntry(asar, asarPath);
+  const files = asar.listPackage(asarPath, { isPack: false });
+  const mainJsRel = findMainJsEntry(files);
   if (!mainJsRel) {
     fail("could not find main.js under .vite/build in app.asar");
   }
-  let mainJs;
-  try {
-    mainJs = asar.extractFile(asarPath, mainJsRel);
-  } catch {
+  const mainJs = extractMainJsFromAsar(asar, asarPath, mainJsRel, files);
+  if (!mainJs) {
     fail(`could not read ${mainJsRel} from app.asar`);
   }
   const mainJsPath = path.join(resourcesDir, "_verify_main.js");
