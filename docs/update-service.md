@@ -50,8 +50,7 @@ If a tag such as `v0.0.1` already exists (for example from a manual tag before C
 
 Build targets:
 
-- macOS arm64 (`macos-latest`)
-- macOS x64 (`macos-13`)
+- macOS arm64 + x64 on one `macos-latest` job (x64 is cross-built on Apple Silicon; retired `macos-13` runners are not used)
 - Windows x64
 - Linux x64 (deb/rpm; AppImage when the maker produces one)
 

@@ -122,6 +122,94 @@ jobs:
           write_summary ""
           write_summary "Version bumped **${previous} → ${current}**. Building **${tag}**."
 
+  build-macos:
+    name: macOS (arm64 + x64)
+    needs: resolve-release
+    if: needs.resolve-release.outputs.should_release == 'true'
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Make Electron app (arm64)
+        run: npm run make -- --platform=darwin --arch=arm64
+
+      - name: Prepare macOS arm64 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          APP_PATH="out/Destrall-darwin-arm64/Destrall.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH="$(find out -path '*darwin*arm64*' -name 'Destrall.app' -maxdepth 3 | head -n 1)"
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Could not find arm64 .app bundle"
+            find out -maxdepth 4 -print
+            exit 1
+          fi
+          hdiutil create -volname "Destrall" -srcfolder "$APP_PATH" -ov -format UDZO \
+            "release-artifacts/Destrall-mac-arm64.dmg"
+          ZIP_FILE="$(find out/make -path '*darwin*arm64*' -name '*.zip' | head -n 1 || true)"
+          if [ -n "$ZIP_FILE" ]; then
+            cp "$ZIP_FILE" "release-artifacts/Destrall-mac-arm64.zip"
+          fi
+
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Destrall-mac-arm64
+          path: app/release-artifacts/Destrall-mac-arm64.*
+          if-no-files-found: error
+
+      - name: Make Electron app (x64)
+        run: npm run make -- --platform=darwin --arch=x64
+
+      - name: Prepare macOS x64 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release-artifacts
+          mkdir -p release-artifacts
+          APP_PATH="out/Destrall-darwin-x64/Destrall.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH="$(find out -path '*darwin*x64*' -name 'Destrall.app' -maxdepth 3 | head -n 1)"
+          fi
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "Could not find x64 .app bundle"
+            find out -maxdepth 4 -print
+            exit 1
+          fi
+          hdiutil create -volname "Destrall" -srcfolder "$APP_PATH" -ov -format UDZO \
+            "release-artifacts/Destrall-mac-x64.dmg"
+          ZIP_FILE="$(find out/make -path '*darwin*x64*' -name '*.zip' | head -n 1 || true)"
+          if [ -n "$ZIP_FILE" ]; then
+            cp "$ZIP_FILE" "release-artifacts/Destrall-mac-x64.zip"
+          fi
+
+      - name: Upload macOS x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Destrall-mac-x64
+          path: app/release-artifacts/Destrall-mac-x64.*
+          if-no-files-found: error
+
   build:
     needs: resolve-release
     if: needs.resolve-release.outputs.should_release == 'true'
@@ -129,14 +217,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            artifact_name: Destrall-mac-arm64
-          - os: macos-13
-            platform: darwin
-            arch: x64
-            artifact_name: Destrall-mac-x64
           - os: windows-latest
             platform: win32
             arch: x64
@@ -174,25 +254,6 @@ jobs:
 
       - name: Make Electron app
         run: npm run make -- --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
-
-      - name: Prepare artifacts on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-artifacts
-          APP_PATH="$(find out -type d -name '*.app' -maxdepth 3 | head -n 1)"
-          if [ -z "$APP_PATH" ]; then
-            echo "Could not find packaged .app bundle under out/"
-            find out -maxdepth 4 -print
-            exit 1
-          fi
-          hdiutil create -volname "Destrall" -srcfolder "$APP_PATH" -ov -format UDZO \
-            "release-artifacts/${{ matrix.artifact_name }}.dmg"
-          ZIP_FILE="$(find out/make -type f -name '*.zip' | head -n 1 || true)"
-          if [ -n "$ZIP_FILE" ]; then
-            cp "$ZIP_FILE" "release-artifacts/${{ matrix.artifact_name }}.zip"
-          fi
 
       - name: Prepare artifacts on Windows
         if: runner.os == 'Windows'
@@ -243,7 +304,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [resolve-release, build]
+    needs: [resolve-release, build-macos, build]
     if: needs.resolve-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
 
