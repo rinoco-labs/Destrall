@@ -4,6 +4,7 @@
  * Usage: node scripts/verify-packaged-llama.mjs [path-to-packaged-app-or-out-dir]
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -107,40 +108,22 @@ function findMainJsEntry(files) {
   return fallback ?? null;
 }
 
-function extractMainJsFromAsar(asar, asarPath, mainJsRel, files) {
-  const candidates = new Set([mainJsRel]);
-  const normalized = mainJsRel.replace(/\\/g, "/");
-  candidates.add(normalized);
-  candidates.add(normalized.replace(/^\//, ""));
-  if (process.platform === "win32") {
-    candidates.add(normalized.replace(/\//g, "\\"));
-    candidates.add(`\\${normalized.replace(/^\//, "").replace(/\//g, "\\")}`);
-  }
-
-  for (const candidate of candidates) {
-    try {
-      return asar.extractFile(asarPath, candidate);
-    } catch {
-      /* try next candidate */
+/** extractFile path handling differs on Windows-built archives; extractAll is reliable. */
+function readMainJsFromAsar(asar, asarPath) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "destrall-verify-asar-"));
+  try {
+    asar.extractAll(asarPath, tmpDir);
+    const mainPath = path.join(tmpDir, ".vite", "build", "main.js");
+    if (!fs.existsSync(mainPath)) {
+      return null;
     }
+    return fs.readFileSync(mainPath, "utf8");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-
-  for (const file of files) {
-    const norm = file.replace(/\\/g, "/");
-    if (norm.includes(".vite") && norm.endsWith("/main.js")) {
-      try {
-        return asar.extractFile(asarPath, file);
-      } catch {
-        /* try next */
-      }
-    }
-  }
-
-  return null;
 }
 
-function mainJsLooksExternalized(mainJsPath) {
-  const text = fs.readFileSync(mainJsPath, "utf8");
+function mainJsLooksExternalized(text) {
   if (text.includes('from"node-llama-cpp"') || text.includes("from 'node-llama-cpp'")) {
     return false;
   }
@@ -217,21 +200,16 @@ function verifyResources(resourcesDir) {
   }
 
   const files = asar.listPackage(asarPath, { isPack: false });
-  const mainJsRel = findMainJsEntry(files);
-  if (!mainJsRel) {
+  if (!findMainJsEntry(files)) {
     fail("could not find main.js under .vite/build in app.asar");
   }
-  const mainJs = extractMainJsFromAsar(asar, asarPath, mainJsRel, files);
+  const mainJs = readMainJsFromAsar(asar, asarPath);
   if (!mainJs) {
-    fail(`could not read ${mainJsRel} from app.asar`);
+    fail("could not extract .vite/build/main.js from app.asar");
   }
-  const mainJsPath = path.join(resourcesDir, "_verify_main.js");
-  fs.writeFileSync(mainJsPath, mainJs);
-  if (!mainJsLooksExternalized(mainJsPath)) {
-    fs.unlinkSync(mainJsPath);
+  if (!mainJsLooksExternalized(mainJs)) {
     fail("main.js appears to bundle node-llama-cpp instead of using runtime import()");
   }
-  fs.unlinkSync(mainJsPath);
   ok("main.js uses external node-llama-cpp imports");
 }
 
