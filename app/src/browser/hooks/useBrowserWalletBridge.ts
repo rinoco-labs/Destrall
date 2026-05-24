@@ -58,6 +58,24 @@ export function useBrowserWalletBridge() {
     await desktopNativeBrowserResolveWalletRequest({ id: requestId, error: message });
   }, []);
 
+  const resolveSupersededPending = useCallback(
+    async (requestId: string, message = "Superseded by a newer wallet request") => {
+      await desktopNativeBrowserResolveWalletRequest({ id: requestId, error: message });
+    },
+    [],
+  );
+
+  const replacePending = useCallback(
+    async (request: PendingDappRequest, supersedeMessage?: string) => {
+      const existing = useDappConnectionStore.getState().pending;
+      if (existing && existing.id !== request.id) {
+        await resolveSupersededPending(existing.id, supersedeMessage);
+      }
+      setPending(request);
+    },
+    [resolveSupersededPending, setPending],
+  );
+
   const rejectPending = useCallback(
     async (message = "User rejected the request") => {
       if (!pending) return;
@@ -155,6 +173,13 @@ export function useBrowserWalletBridge() {
         }
 
         const existing = useDappConnectionStore.getState().pending;
+        if (existing && existing.method !== "connect") {
+          await resolveSupersededConnect(
+            request.id,
+            "A wallet request is already waiting for approval",
+          );
+          return;
+        }
         if (existing?.method === "connect" && existing.origin === request.origin) {
           await resolveSupersededConnect(
             request.id,
@@ -163,22 +188,38 @@ export function useBrowserWalletBridge() {
           return;
         }
         if (existing?.method === "connect") {
-          await resolveSupersededConnect(existing.id, "Superseded by a newer connection request");
+          await resolveSupersededPending(existing.id, "Superseded by a newer connection request");
         }
 
         void desktopNativeBrowserSetVisible(false).catch(() => undefined);
-        setPending(request);
+        await replacePending(request);
         return;
       }
 
       if (request.method === "disconnect") {
-        setPending(request);
+        try {
+          await desktopBrowserWalletDisconnect({
+            accountId: activeAccount.id,
+            origin: request.origin,
+            chain: "sui",
+          });
+          await desktopNativeBrowserClearAuthorizedAccounts(request.origin);
+          await desktopNativeBrowserResolveWalletRequest({
+            id: request.id,
+            result: { ok: true },
+          });
+        } catch (error) {
+          await desktopNativeBrowserResolveWalletRequest({
+            id: request.id,
+            error: error instanceof Error ? error.message : "Disconnect failed",
+          });
+        }
         return;
       }
 
-      setPending(request);
+      await replacePending(request);
     },
-    [activeAccount, isUnlocked, resolveSupersededConnect, setPending],
+    [activeAccount, isUnlocked, replacePending, resolveSupersededConnect, resolveSupersededPending],
   );
 
   useEffect(() => {
@@ -259,7 +300,32 @@ export function useBrowserWalletBridge() {
 
       const payload = pending.payload as Record<string, unknown>;
 
+      const authorizeForSigning = async () => {
+        await desktopBrowserAuthorizeDapp({
+          accountId: activeAccount.id,
+          origin: pending.origin,
+          displayName: pending.origin,
+          accountAddress: activeAccount.address,
+          network: networkLabel,
+          permissions: [...CONNECT_PERMISSIONS],
+        });
+        const connectResult = await desktopBrowserWalletConnect({
+          accountId: activeAccount.id,
+          origin: pending.origin,
+          chain: "sui",
+          silent: false,
+        });
+        if (connectResult.accounts.length > 0) {
+          await desktopNativeBrowserPersistAuthorizedAccounts({
+            origin: pending.origin,
+            chain: "sui",
+            accounts: connectResult.accounts,
+          }).catch(() => undefined);
+        }
+      };
+
       if (pending.method === "sui:signPersonalMessage") {
+        await authorizeForSigning();
         const messageBase64 = String(payload.message ?? "");
         const result = await desktopBrowserWalletSignPersonalMessage({
           accountId: activeAccount.id,
@@ -272,6 +338,7 @@ export function useBrowserWalletBridge() {
       }
 
       if (pending.method === "sui:signTransaction") {
+        await authorizeForSigning();
         const txDataJson = String(payload.txData ?? "");
         const result = await desktopBrowserWalletSignTransaction({
           accountId: activeAccount.id,
@@ -284,6 +351,7 @@ export function useBrowserWalletBridge() {
       }
 
       if (pending.method === "sui:signAndExecuteTransaction") {
+        await authorizeForSigning();
         const txDataJson = String(payload.txData ?? "");
         const result = await desktopBrowserWalletSignAndExecute({
           accountId: activeAccount.id,

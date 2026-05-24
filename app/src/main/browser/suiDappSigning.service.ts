@@ -1,3 +1,4 @@
+import { bcs } from "@mysten/bcs";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { messageWithIntent, toSerializedSignature } from "@mysten/sui/cryptography";
@@ -37,7 +38,8 @@ function decodeBase64OrUtf8(value: string): Uint8Array {
 }
 
 function signPersonalMessageSerialized(secretKey32: Uint8Array, messageBytes: Uint8Array): string {
-  const digest = blake2b(messageWithIntent("PersonalMessage", messageBytes), { dkLen: 32 });
+  const intentPayload = bcs.byteVector().serialize(messageBytes).toBytes();
+  const digest = blake2b(messageWithIntent("PersonalMessage", intentPayload), { dkLen: 32 });
   const sig = ed25519.sign(digest, secretKey32);
   const publicKey = ed25519.getPublicKey(secretKey32);
   return toSerializedSignature({

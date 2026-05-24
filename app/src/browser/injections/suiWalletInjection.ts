@@ -164,10 +164,15 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
               try {
                 const response = await hostRequest("connect", { chain: chainKey, silent: true });
                 const next = normalizeConnectAccounts(response);
-                if (next.length) {
-                  accounts = next;
-                  emitAccountsChanged();
+                accounts = next;
+                if (!next.length) {
+                  try {
+                    sessionStorage.removeItem(
+                      "destrall:accounts:" + window.location.origin + ":" + chainKey,
+                    );
+                  } catch (_e) {}
                 }
+                emitAccountsChanged();
                 return { accounts: next };
               } finally {
                 silentConnectInFlight = null;
@@ -209,12 +214,10 @@ export function buildSuiWalletStandardInjectionScript(options: WalletInjectionOp
       },
       "sui:signPersonalMessage": {
         version: "1.1.0",
-        signPersonalMessage: async (input) => {
-          const signature = await hostRequest("sui:signPersonalMessage", {
+        signPersonalMessage: async (input) =>
+          hostRequest("sui:signPersonalMessage", {
             message: toBase64(input.message),
-          });
-          return { bytes: toBase64(input.message), signature };
-        },
+          }),
       },
       "sui:signTransaction": {
         version: "2.0.0",
