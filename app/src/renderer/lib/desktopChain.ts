@@ -109,7 +109,7 @@ export async function desktopPublishDailyBriefMemory(payload: {
 
 export function subscribeChainNetworkChanged(listener: () => void): () => void {
   if (typeof window === "undefined" || !window.destrallApi) {
-    return () => {};
+    return () => undefined;
   }
   return window.destrallApi.chain.onNetworkChanged(listener);
 }

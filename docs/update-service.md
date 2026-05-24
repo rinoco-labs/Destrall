@@ -35,15 +35,25 @@ Wallet keys, seed material, and SQLite data remain in user data paths — not in
 ## Publishing a release
 
 1. Bump `version` in `app/package.json`.
-2. Commit and push a tag such as `v0.0.2`.
-3. GitHub Actions workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `v*` tags (or via **workflow_dispatch**).
-4. The workflow builds on native runners:
-   - macOS arm64 (`macos-latest`)
-   - macOS x64 (`macos-13`)
-   - Windows x64
-   - Linux x64 (deb/rpm; AppImage when the maker produces one)
-5. macOS DMGs are created with `hdiutil` from the packaged `.app` (Forge DMG maker is not used — see `app/BUILDING.md`).
-6. Artifacts are uploaded to the GitHub Release with predictable names for the update service.
+2. Commit and push to `main`.
+
+The GitHub Actions workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) detects when the **`version` field** in `app/package.json` changes on `main` and automatically builds and publishes a release tagged `v{version}` (for example `0.0.2` → tag `v0.0.2`).
+
+You can still trigger a release manually:
+
+- Push a `v*` tag, or
+- Run **Actions → Release Desktop App → Run workflow**
+
+The workflow skips release when `app/package.json` is edited but the version is unchanged (for example dependency-only changes).
+
+Build targets:
+
+- macOS arm64 (`macos-latest`)
+- macOS x64 (`macos-13`)
+- Windows x64
+- Linux x64 (deb/rpm; AppImage when the maker produces one)
+
+macOS DMGs are created with `hdiutil` from the packaged `.app` (Forge DMG maker is not used — see `app/BUILDING.md`). Artifacts are uploaded to the GitHub Release with predictable names for the update service.
 
 Local single-target builds:
 

@@ -271,7 +271,7 @@ export function parseNaturalSchedule(
 
 export function nextDailyOccurrence(now: Date, timezone: string, hour: number, minute: number): Date {
   const parts = getZonedParts(now, timezone);
-  let candidate = convertLocalPartsToUtc(parts.year, parts.month, parts.day, hour, minute, timezone);
+  const candidate = convertLocalPartsToUtc(parts.year, parts.month, parts.day, hour, minute, timezone);
   if (!isPastDate(candidate)) return candidate;
   return convertLocalPartsToUtc(parts.year, parts.month, parts.day + 1, hour, minute, timezone);
 }

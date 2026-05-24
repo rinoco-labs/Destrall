@@ -241,7 +241,7 @@ function AccountSettingsPage() {
             label="Default for sending"
             description="Prefer this account when opening Send (local UI only)."
             checked={false}
-            onChange={() => {}}
+            onChange={() => undefined}
           />
         </div>
 
