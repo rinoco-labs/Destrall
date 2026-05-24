@@ -1,4 +1,10 @@
 import type { Llama, LlamaModel } from "node-llama-cpp";
+import {
+  getLlmEngineProbeResult,
+  isLlmEngineAvailable,
+  LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE,
+  probeLlmEngine,
+} from "./llmEngineProbe";
 
 type RuntimeStatus = "idle" | "loading" | "ready" | "failed";
 
@@ -44,9 +50,15 @@ export class ModelRuntimeService {
       this.errorMessage = null;
       this.disposeModelOnly();
       try {
+        const engine = getLlmEngineProbeResult() ?? (await probeLlmEngine());
+        if (!engine.ok) {
+          throw new Error(engine.errorMessage ?? LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE);
+        }
         if (!this.llama) {
           const { getLlama } = await import("node-llama-cpp");
+          console.info("[llm] initializing getLlama (build=never)");
           this.llama = await getLlama({ build: "never" });
+          console.info("[llm] getLlama ready");
         }
         this.model = await this.llama.loadModel({ modelPath });
         this.loadedModelId = modelId;

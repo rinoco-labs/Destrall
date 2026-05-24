@@ -16,6 +16,7 @@ import { planAssistantStructuredTurn } from "../services/assistant/assistantStru
 import { buildCompactAssistantContext } from "../../assistant/contextBuilder";
 import { assistantInferenceService, type ChatTurnMessage } from "./assistantInferenceService";
 import { modelDownloadService } from "./modelDownloadService";
+import { isLlmEngineAvailable, LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE, probeLlmEngine } from "./llmEngineProbe";
 import { modelRuntimeService } from "./modelRuntimeService";
 import { modelStorageService } from "./modelStorageService";
 
@@ -105,6 +106,13 @@ export class AiModelMainService {
   }
 
   getAssistantRuntimeState(): AssistantRuntimeState {
+    if (!isLlmEngineAvailable()) {
+      const probeError = modelRuntimeService.getError();
+      return {
+        status: "failed",
+        errorMessage: probeError ?? LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE,
+      };
+    }
     return {
       status: modelRuntimeService.getStatus(),
       errorMessage: modelRuntimeService.getError(),
@@ -163,6 +171,9 @@ export class AiModelMainService {
 
   async installModel(webContents?: WebContents): Promise<LlmStateSnapshot> {
     return this.enqueue(async () => {
+      if (!isLlmEngineAvailable()) {
+        throw new Error(LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE);
+      }
       const catalog = INTERNAL_AI_MODEL;
       this.downloadAbort?.abort();
       const ac = new AbortController();
@@ -291,6 +302,9 @@ export class AiModelMainService {
 
   async loadModel(webContents?: WebContents): Promise<LlmStateSnapshot> {
     return this.enqueue(async () => {
+      if (!isLlmEngineAvailable()) {
+        throw new Error(LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE);
+      }
       const catalog = INTERNAL_AI_MODEL;
       this.repo.clearSelection();
       modelRuntimeService.disposeModelOnly();
@@ -377,6 +391,19 @@ export class AiModelMainService {
     this.startupRestoreAttempted = true;
     this.migrateLegacyPersistence();
 
+    const engine = await probeLlmEngine();
+    if (!engine.ok) {
+      const diskOnFail = modelStorageService.resolveExistingPath();
+      this.setRow({
+        installed: !!diskOnFail,
+        selected: false,
+        status: "failed",
+        localPath: diskOnFail,
+        errorMessage: engine.errorMessage,
+      });
+      return;
+    }
+
     const disk = modelStorageService.resolveExistingPath();
     const selectedId = this.repo.getSelectedModelId();
     if (!selectedId && !disk) {
@@ -422,6 +449,9 @@ export class AiModelMainService {
     personalityId: string;
     pendingProposalsSummary?: string;
   }): Promise<{ content: string; metadata?: string | null }> {
+    if (!isLlmEngineAvailable()) {
+      throw new Error(LOCAL_AI_ENGINE_UNAVAILABLE_MESSAGE);
+    }
     const t0 = performance.now();
     console.info(`[assistant] chat start account=${payload.accountId}`);
     const last = payload.messages[payload.messages.length - 1];

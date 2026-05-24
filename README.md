@@ -41,3 +41,7 @@ Development and packaging live under **`app/`**. From that directory:
 **Recommended for all four OS targets:** push a version bump in `app/package.json` to `main` — the [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow runs automatically and publishes installers to GitHub Releases. See [`docs/update-service.md`](docs/update-service.md) for asset names and the in-app manual update flow.
 
 Artifacts are written to **`app/out/make/`** (ZIP, Squirrel `.exe`, deb, rpm; macOS CI also produces `.dmg`). Full script tables and local limitations are in **`app/BUILDING.md`**.
+
+### node-llama-cpp packaging notes
+
+The local assistant depends on **`node-llama-cpp`** (main process only, externalized from Vite, native files unpacked from ASAR). Release builds must be produced on **native OS/arch runners** so prebuilt binaries match the target. After packaging, run `npm run verify:packaged-llama` in `app/` — details and rationale are in [`app/BUILDING.md`](app/BUILDING.md) and the [node-llama-cpp Electron guide](https://node-llama-cpp.withcat.ai/guide/electron#electron-support).

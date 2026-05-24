@@ -21,7 +21,8 @@
     "make:win:x64": "electron-forge make --platform=win32 --arch=x64",
     "make:linux:x64": "electron-forge make --platform=linux --arch=x64",
     "make:all": "npm-run-all --sequential clean:make make:mac:arm64 make:mac:x64 make:win:x64 make:linux:x64",
-    "make": "electron-forge make"
+    "make": "electron-forge make",
+    "verify:packaged-llama": "node scripts/verify-packaged-llama.mjs"
   },
   "keywords": [],
   "author": {

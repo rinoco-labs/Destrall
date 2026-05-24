@@ -16,6 +16,7 @@ import { attachNativeBrowserToWindow } from "./main/browser/nativeBrowserViewMan
 import { startTriggerScheduler } from "./packages/core/triggers/triggerScheduler";
 import { timezoneSettingsService } from "./services/time/timezone.service";
 import { aiModelMainService } from "./main/ai/aiModelMainService";
+import { probeLlmEngine } from "./main/ai/llmEngineProbe";
 import { registerCorePackages } from "./packages/runtime/registerCorePackages";
 
 if (started) {
@@ -98,9 +99,11 @@ app.whenReady().then(() => {
   registerBrowserIpcHandlers();
   registerUpdateIpcHandlers();
   startTriggerScheduler();
-  void aiModelMainService.restoreFromPersistence().catch((err) => {
-    console.error("[llm] Startup restore failed", err);
-  });
+  void probeLlmEngine()
+    .then(() => aiModelMainService.restoreFromPersistence())
+    .catch((err) => {
+      console.error("[llm] Startup LLM init failed", err);
+    });
   createWindow();
 });
 

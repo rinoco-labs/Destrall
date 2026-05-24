@@ -7,7 +7,59 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+
+/** Must match vite.main.config.ts rollup externals — installed into the staged app after prune. */
+const MAIN_PROCESS_EXTERNAL_PACKAGES = ['node-llama-cpp'] as const;
+
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'),
+) as { dependencies?: Record<string, string> };
+
+function runNpm(args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npm', args, {
+      cwd,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npm ${args.join(' ')} exited with code ${code ?? 'unknown'}`));
+    });
+  });
+}
+
+/**
+ * Installs only external main-process packages (and their deps) into the staged app.
+ * Uses a stub package.json so npm does not pull every production dependency from Destrall.
+ */
+async function installExternalMainPackages(buildPath: string): Promise<void> {
+  const specs = MAIN_PROCESS_EXTERNAL_PACKAGES.map((name) => {
+    const version = packageJson.dependencies?.[name];
+    return version ? `${name}@${version}` : name;
+  });
+
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'destrall-forge-llm-'));
+  try {
+    await fs.promises.writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ name: 'destrall-forge-llm-stub', private: true }, null, 2),
+    );
+    await runNpm(['install', '--omit=dev', '--no-package-lock', ...specs], tmpDir);
+
+    const srcModules = path.join(tmpDir, 'node_modules');
+    const destModules = path.join(buildPath, 'node_modules');
+    await fs.promises.mkdir(destModules, { recursive: true });
+    await fs.promises.cp(srcModules, destModules, { recursive: true, force: true });
+  } finally {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true });
+  }
+}
 
 const brandingDir = path.join(__dirname, 'src/assets/branding');
 /** Base path without extension — Forge picks .icns / .ico / .png per platform. */
@@ -42,11 +94,21 @@ const makers: ForgeConfig['makers'] = [
 ];
 
 const config: ForgeConfig = {
+  hooks: {
+    /**
+     * Electron Forge + Vite does not copy node_modules into the packaged app.
+     * External main-process packages (see vite.main.config.ts) must be installed here.
+     * @see https://node-llama-cpp.withcat.ai/guide/electron
+     */
+    packageAfterPrune: async (_config, buildPath) => {
+      await installExternalMainPackages(buildPath);
+    },
+  },
   packagerConfig: {
     /** Linux deb/rpm and desktop entries use this binary name (matches productName). */
     executableName: 'Destrall',
     asar: {
-      unpack: '**/node_modules/node-llama-cpp/**/*',
+      unpack: '**/node_modules/{node-llama-cpp,@node-llama-cpp,llama.cpp}/**/*',
     },
     icon: packagerIcon,
     extraResource: [brandingDir],

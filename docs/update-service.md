@@ -48,11 +48,14 @@ The workflow skips release when `app/package.json` is edited but the **`version`
 
 If a tag such as `v0.0.1` already exists (for example from a manual tag before CI passed), bump the version (for example `0.0.2`) or run **Actions → Release Desktop App → Run workflow** with **force** enabled to rebuild assets for the current version.
 
-Build targets:
+Build targets (each on a **native** runner so `node-llama-cpp` prebuilt binaries match the artifact):
 
-- macOS arm64 + x64 on one `macos-latest` job (x64 is cross-built on Apple Silicon; retired `macos-13` runners are not used)
-- Windows x64
-- Linux x64 (deb/rpm; AppImage when the maker produces one)
+- macOS arm64 — `macos-latest` (Apple Silicon)
+- macOS x64 — `macos-13` (Intel; x64 cannot be reliably packaged from arm64 hosts)
+- Windows x64 — `windows-latest`
+- Linux x64 — `ubuntu-latest` (deb/rpm; AppImage when the maker produces one)
+
+Each build job runs `npm run verify:packaged-llama` before uploading artifacts.
 
 macOS DMGs are created with `hdiutil` from the packaged `.app` (Forge DMG maker is not used — see `app/BUILDING.md`). Artifacts are uploaded to the GitHub Release with predictable names for the update service.
 
