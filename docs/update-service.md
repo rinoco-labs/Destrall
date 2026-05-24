@@ -44,7 +44,9 @@ You can still trigger a release manually:
 - Push a `v*` tag, or
 - Run **Actions → Release Desktop App → Run workflow**
 
-The workflow skips release when `app/package.json` is edited but the version is unchanged (for example dependency-only changes).
+The workflow skips release when `app/package.json` is edited but the **`version` field** is unchanged (for example adding devDependencies or editing scripts). Your lint fix commit only changed dependencies — that is why build/release were skipped.
+
+If a tag such as `v0.0.1` already exists (for example from a manual tag before CI passed), bump the version (for example `0.0.2`) or run **Actions → Release Desktop App → Run workflow** with **force** enabled to rebuild assets for the current version.
 
 Build targets:
 

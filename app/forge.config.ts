@@ -14,8 +14,14 @@ const brandingDir = path.join(__dirname, 'src/assets/branding');
 const packagerIcon = path.join(brandingDir, 'desktop-icon');
 const linuxIcon = path.join(brandingDir, 'desktop-icon.png');
 
+const linuxPackageOptions = {
+  icon: linuxIcon,
+  /** Packager emits `Destrall`; deb/rpm default to npm `name` (`destrall`). */
+  bin: 'Destrall',
+};
+
 // Host-only makers: Squirrel needs Windows (or Mono+Wine on macOS/Linux); deb/rpm need Linux tooling.
-// ZIP makers run on any host when cross-packaging with explicit --platform/--arch.
+// win32 ZIP only when cross-packaging — on Windows, cross-zip uses fs.rmdir({ recursive }) which Node 22+ rejects.
 const makers: ForgeConfig['makers'] = [
   new MakerZIP({}, ['darwin']),
   ...(process.platform === 'win32'
@@ -25,12 +31,11 @@ const makers: ForgeConfig['makers'] = [
           iconUrl: path.join(brandingDir, 'desktop-icon.ico'),
         }),
       ]
-    : []),
-  new MakerZIP({}, ['win32']),
+    : [new MakerZIP({}, ['win32'])]),
   ...(process.platform === 'linux'
     ? [
-        new MakerDeb({ options: { icon: linuxIcon } }),
-        new MakerRpm({ options: { icon: linuxIcon } }),
+        new MakerDeb({ options: linuxPackageOptions }),
+        new MakerRpm({ options: linuxPackageOptions }),
       ]
     : []),
   new MakerZIP({}, ['linux']),
@@ -38,6 +43,8 @@ const makers: ForgeConfig['makers'] = [
 
 const config: ForgeConfig = {
   packagerConfig: {
+    /** Linux deb/rpm and desktop entries use this binary name (matches productName). */
+    executableName: 'Destrall',
     asar: {
       unpack: '**/node_modules/node-llama-cpp/**/*',
     },

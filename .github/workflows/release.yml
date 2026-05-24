@@ -2,6 +2,11 @@ name: Release Desktop App
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Build and publish even if the version field did not change on this commit
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -34,20 +39,47 @@ jobs:
       - name: Resolve release tag
         id: resolve
         shell: bash
+        env:
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
         run: |
           set -euo pipefail
+
+          write_summary() {
+            echo "$1" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          skip_release() {
+            local reason="$1"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${reason}"
+            write_summary "## Release skipped"
+            write_summary ""
+            write_summary "${reason}"
+            write_summary ""
+            write_summary "**To publish a release:** bump the \`version\` field in \`app/package.json\` and push to \`main\`, or run this workflow manually with **force** enabled."
+          }
 
           read_version() {
             node -p "require('./app/package.json').version"
           }
 
           current="$(read_version)"
+          write_summary "## Release resolution"
+          write_summary ""
+          write_summary "Current \`app/package.json\` version: **${current}**"
 
-          # Manual run — always release the version in package.json.
+          # Manual run — release package.json version (optionally forced).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="v${current}"
+            if [ "${FORCE_RELEASE}" != "true" ] && git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
+              skip_release "Tag \`${tag}\` already exists. Enable **force** on workflow_dispatch to rebuild and replace release assets."
+              exit 0
+            fi
             echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "release_tag=v${current}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=${tag}" >> "$GITHUB_OUTPUT"
             echo "version=${current}" >> "$GITHUB_OUTPUT"
+            write_summary ""
+            write_summary "Manual release: **${tag}** (force=${FORCE_RELEASE})"
             exit 0
           fi
 
@@ -57,28 +89,29 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "release_tag=${tag}" >> "$GITHUB_OUTPUT"
             echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+            write_summary ""
+            write_summary "Tag push: **${tag}**"
             exit 0
           fi
 
-          # Main push — release only when app/package.json version changed.
+          # Main push — release only when the version *field* changed (not lockfile-only edits).
           if ! git show HEAD~1:app/package.json > /tmp/previous-package.json 2>/dev/null; then
-            echo "No previous package.json on main; skipping automatic release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            skip_release "No previous \`app/package.json\` on \`main\`; cannot detect a version bump."
             exit 0
           fi
 
           previous="$(node -p "require('/tmp/previous-package.json').version")"
+          write_summary ""
+          write_summary "Previous version: **${previous}**"
 
           if [ "${current}" = "${previous}" ]; then
-            echo "Version unchanged (${current}); skipping release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            skip_release "The \`version\` field in \`app/package.json\` did not change (${current}). Dependency or script-only edits do not trigger a release."
             exit 0
           fi
 
           tag="v${current}"
           if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Tag ${tag} already exists; skipping duplicate release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            skip_release "Tag \`${tag}\` already exists. Bump \`version\` in \`app/package.json\` (for example to 0.0.2) or run this workflow manually with **force**."
             exit 0
           fi
 
@@ -86,6 +119,8 @@ jobs:
           echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "release_tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${current}" >> "$GITHUB_OUTPUT"
+          write_summary ""
+          write_summary "Version bumped **${previous} → ${current}**. Building **${tag}**."
 
   build:
     needs: resolve-release
@@ -230,5 +265,6 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -78,5 +78,5 @@ npm run make:linux:x64    # best on Linux
 | Platform | Any host (cross-make) | Native host only |
 |----------|----------------------|------------------|
 | darwin | ZIP | — |
-| win32 | ZIP | Squirrel (Windows runner) |
+| win32 | ZIP (not on Windows — use Squirrel there) | Squirrel (Windows runner) |
 | linux | ZIP | deb, rpm (Linux runner) |
