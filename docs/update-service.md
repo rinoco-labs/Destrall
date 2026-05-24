@@ -1,11 +1,11 @@
 # Destrall manual update service
 
-Destrall checks [GitHub Releases](https://github.com/Galliun/Destrall/releases) for new desktop builds, downloads the correct installer for the user’s platform, and lets them open it manually. The app never auto-installs, auto-restarts, or removes the current installation.
+Destrall checks [GitHub Releases](https://github.com/rinoco-labs/Destrall/releases) for new desktop builds, downloads the correct installer for the user’s platform, and lets them open it manually. The app never auto-installs, auto-restarts, or removes the current installation.
 
 ## How checking works
 
 1. The main process reads the current version from `app.getVersion()` (from `app/package.json`).
-2. It queries `https://api.github.com/repos/Galliun/Destrall/releases/latest`.
+2. It queries `https://api.github.com/repos/rinoco-labs/Destrall/releases/latest`.
 3. Draft releases are ignored. Prereleases are ignored on the **stable** channel (see `app/src/config/update.ts`).
 4. The latest tag is normalized (`v0.1.0` and `0.1.0` compare the same) and compared to the running version.
 5. If a newer release exists, the service picks a release asset for the current OS/architecture.
@@ -63,7 +63,7 @@ Use CI for all four platform targets; `npm run make` only runs Forge make for th
 
 ## Security notes
 
-- Only assets from `https://github.com/Galliun/Destrall/releases/download/...` are downloaded.
+- Only assets from `https://github.com/rinoco-labs/Destrall/releases/download/...` are downloaded.
 - The renderer cannot pass arbitrary URLs to the updater.
 - Downloaded files are never executed automatically.
 
