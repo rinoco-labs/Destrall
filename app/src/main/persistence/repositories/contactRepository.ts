@@ -136,6 +136,20 @@ export class ContactRepository {
     this.db.prepare(`DELETE FROM contacts WHERE id = ?`).run(id);
   }
 
+  /** Delete contacts tied to a specific wallet account. Global contacts are kept. */
+  clearForAccount(accountId: string): number {
+    const id = accountId.trim();
+    if (!id) return 0;
+    const result = this.db.prepare(`DELETE FROM contacts WHERE account_id = ?`).run(id);
+    return result.changes ?? 0;
+  }
+
+  /** Delete all contacts (full wallet logout or replace). */
+  clearAll(): number {
+    const result = this.db.prepare(`DELETE FROM contacts`).run();
+    return result.changes ?? 0;
+  }
+
   getById(id: string): ContactEntity | null {
     const row = this.db.prepare(`SELECT * FROM contacts WHERE id = ?`).get(id) as Row | undefined;
     return row ? mapRow(row) : null;

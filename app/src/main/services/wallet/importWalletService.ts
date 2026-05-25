@@ -10,6 +10,7 @@ import { deriveSuiAccountFromMnemonic } from "../chains/sui/sui-wallet.service";
 import type { MnemonicService } from "../../wallet/mnemonicService";
 import type { SecureWalletStorage } from "../security/secureWalletStorage";
 import { walletSession } from "../../wallet/walletSession";
+import { clearContactsOnWalletReplace } from "../../../services/contacts/contactCleanupService";
 
 const ACTIVE_ACCOUNT_KEY = "active_account_id";
 
@@ -99,6 +100,7 @@ export function executeCreateOrImportWallet(deps: ImportWalletDeps, args: Create
 
   let accountId = "";
   runInTransaction(deps.db, () => {
+    clearContactsOnWalletReplace(deps.db);
     deps.db.prepare(`DELETE FROM wallet_accounts`).run();
     deps.db.prepare(`DELETE FROM wallet_profile`).run();
     deps.db.prepare(`DELETE FROM app_settings WHERE key = ?`).run(ACTIVE_ACCOUNT_KEY);

@@ -89,4 +89,21 @@ export const assistantDataCache = {
       return buildNaviPositionViews(account.address, env, pools);
     });
   },
+
+  invalidateAccount(accountId: string) {
+    balanceByAccount.delete(accountId);
+    activityByAccount.delete(accountId);
+    for (const key of positionsByKey.keys()) {
+      if (key.startsWith(`${accountId}:`)) {
+        positionsByKey.delete(key);
+      }
+    }
+  },
+
+  invalidateAll() {
+    balanceByAccount.clear();
+    activityByAccount.clear();
+    positionsByKey.clear();
+    poolsByEnv.clear();
+  },
 };

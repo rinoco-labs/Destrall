@@ -6,6 +6,8 @@ import { MnemonicService } from "./mnemonicService";
 import { SecureWalletStorage } from "../services/security/secureWalletStorage";
 import { walletSession } from "./walletSession";
 import { executeCreateOrImportWallet } from "../services/wallet/importWalletService";
+import { clearAllContactsDb, shortAccountId } from "../../services/contacts/contactCleanupDb";
+import { clearRecipientCachesForAccounts } from "../../services/contacts/contactCleanupService";
 
 const ACTIVE_ACCOUNT_KEY = "active_account_id";
 const SUPPORTED_CHAINS: ChainId[] = ["sui"];
@@ -274,13 +276,31 @@ class WalletService {
   }
 
   disconnect() {
+    const snapshot = this.getStatus();
+    const accountIds = snapshot.accounts.map((a) => a.id);
     walletSession.clear();
     this.vault.removeVault();
     runInTransaction(this.db, () => {
+      try {
+        const removed = clearAllContactsDb(this.db);
+        if (process.env.NODE_ENV !== "production") {
+          const hint = snapshot.activeAccountId
+            ? shortAccountId(snapshot.activeAccountId)
+            : "none";
+          console.debug("[contacts] cleared all contacts on wallet logout", { removed, activeAccount: hint });
+        }
+      } catch (error) {
+        console.error(
+          "[contacts] failed to clear contacts on wallet logout",
+          error instanceof Error ? error.message : error,
+        );
+        throw error;
+      }
       this.db.exec(`DELETE FROM wallet_accounts`);
       this.db.exec(`DELETE FROM wallet_profile`);
       this.db.exec(`DELETE FROM app_settings`);
     });
+    clearRecipientCachesForAccounts(accountIds);
   }
 
   private deriveAccount(chain: ChainId, mnemonic: string, accountIndex: number) {
