@@ -11,6 +11,7 @@ import type { SuiChainEnvironment } from "../../../config/chains/sui";
 import { networkSettingsService } from "../network/networkSettingsService";
 import { walletService } from "../../wallet/walletService";
 import { clearSuiClientCache, getSuiClientForEnvironment } from "./sui/sui-client.service";
+import { clearSuinsClientCache } from "../../../services/suins/suinsResolutionService";
 import { SuiTokenMetadataService } from "./sui/sui-token-metadata.service";
 import { fetchSuiBalancesForAddress } from "./sui/sui-balance.service";
 import { enrichSuiBalancesWithAftermathUsd } from "./sui/sui-aftermath-prices.service";
@@ -31,11 +32,13 @@ class ChainFacadeService {
   setSuiNetwork(environment: SuiChainEnvironment) {
     networkSettingsService.setSuiEnvironment(environment);
     clearSuiClientCache();
+    clearSuinsClientCache();
   }
 
   setActiveChain(chain: ChainId) {
     networkSettingsService.setActiveChain(chain);
     clearSuiClientCache();
+    clearSuinsClientCache();
   }
 
   async getTokenBalances(accountId: string): Promise<TokenBalanceView[]> {

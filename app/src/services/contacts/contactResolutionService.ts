@@ -24,15 +24,21 @@ function normalizeNameKey(s: string) {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Canonical Sui address payload: 32 bytes → 64 hex digits after `0x`. */
+const SUI_ADDRESS_HEX_LEN = 64;
+
 /**
- * Parse a user-supplied fragment as a Sui address only if it is actually valid.
- * `normalizeSuiAddress` alone is unsafe: e.g. normalizeSuiAddress("max") returns a
- * zero-padded string that is not a real address but does not throw — that would skip
- * contact-name resolution for short names like "max".
+ * Parse a user-supplied fragment as a Sui address only if it is a full 32-byte address.
+ * `normalizeSuiAddress` alone is unsafe: e.g. normalizeSuiAddress("max") or "0xabc" zero-pads
+ * to a value `isValidSuiAddress` accepts — that would skip contact / SuiNS resolution.
  */
 export function tryParseSuiAddress(fragment: string): string | null {
   const t = fragment.trim();
   if (!t) return null;
+  const hex = t.startsWith("0x") || t.startsWith("0X") ? t.slice(2) : t;
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length !== SUI_ADDRESS_HEX_LEN) {
+    return null;
+  }
   try {
     const normalized = normalizeSuiAddress(t);
     return isValidSuiAddress(normalized) ? normalized : null;

@@ -2,11 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { AssistantProposalCard, AssistantStructuredResult } from "../../../assistant/assistantResultTypes";
 import type { ActionContext } from "../../runtime/actionContext";
 import type { SendProposalSnapshot } from "../../runtime/transactionProposalTypes";
-import {
-  parseOtherAccountRecipient,
-  resolveRecipientLabel,
-  tryParseSuiAddress,
-} from "../../../services/contacts/contactResolutionService";
+import { parseOtherAccountRecipient } from "../../../services/contacts/contactResolutionService";
+import { resolveSendRecipient } from "../../../services/contacts/recipientResolutionService";
 
 function asTrimmedString(v: unknown, field: string): string {
   if (typeof v !== "string") {
@@ -114,10 +111,11 @@ export async function prepareSendAction(
     recipient = `__OTHER_ACCOUNT__:${otherMarker.nameHint}`;
   }
 
-  const resolved = resolveRecipientLabel({
+  const resolved = await resolveSendRecipient({
     recipient,
     contacts,
     otherAccounts,
+    suiEnvironment: net.environment,
   });
 
   if (resolved.kind === "ambiguous_contact" || resolved.kind === "ambiguous_account") {
@@ -134,11 +132,21 @@ export async function prepareSendAction(
     ];
   }
 
+  if (resolved.kind === "invalid_contact_address") {
+    return [
+      {
+        type: "error",
+        message: `Contact "${resolved.contact.name}" does not have a valid Sui address or SuiNS name. Update it on the Contacts screen, then try again.`,
+        code: "invalid_contact_address",
+      },
+    ];
+  }
+
   if (resolved.kind === "none") {
     return [
       {
         type: "error",
-        message: `No contact matched "${resolved.query}". Paste a full Sui address, or add a contact in Contacts, then try again.`,
+        message: `Could not resolve "${resolved.query}" to a recipient. Use a full Sui address (0x…), a saved contact name from Contacts, or a registered SuiNS name (e.g. name.sui).`,
         code: "unknown_recipient",
       },
     ];
@@ -147,19 +155,12 @@ export async function prepareSendAction(
   let recipientAddress: string;
   if (resolved.kind === "sui_address") {
     recipientAddress = resolved.address;
+  } else if (resolved.kind === "suins_name") {
+    recipientDisplayName = resolved.displayName;
+    recipientAddress = resolved.address;
   } else {
     recipientDisplayName = resolved.contact.name;
-    const addr = tryParseSuiAddress(resolved.contact.address);
-    if (!addr) {
-      return [
-        {
-          type: "error",
-          message: `Contact "${resolved.contact.name}" has an invalid Sui address.`,
-          code: "invalid_contact_address",
-        },
-      ];
-    }
-    recipientAddress = addr;
+    recipientAddress = resolved.address;
   }
 
   if (recipientAddress === account.address) {

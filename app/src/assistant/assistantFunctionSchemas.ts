@@ -52,7 +52,7 @@ export const prepareSendFunctionSchema = {
       recipient: {
         type: "string",
         description:
-          "Recipient Sui address, contact name, another account name, or the phrase 'my other wallet' for intra-wallet transfers.",
+          "Recipient: full Sui address (0x…), saved contact name, registered SuiNS name (e.g. name.sui), another account name, or 'my other wallet' for intra-wallet transfers.",
       },
     },
     required: ["token", "amount", "recipient"],

@@ -1,6 +1,7 @@
 import { walletService } from "../main/wallet/walletService";
 import { actionRegistry } from "../packages/runtime/actionRegistry";
 import { contactRepository } from "../main/persistence/repositories/contactRepository";
+import { isContactVisibleInWallet, walletAccountIdSet } from "../services/contacts/contactScope";
 import { assistantToolDefinitionsForModel } from "./assistantFunctionSchemas";
 import { networkSettingsService } from "../main/services/network/networkSettingsService";
 import { readStoredYieldRiskProfile } from "../packages/core/yield/navi/navi-risk.service";
@@ -13,12 +14,6 @@ import { dailyBriefAssistantMemoryLines } from "../main/services/dailyBriefMemor
 import { buildAssistantTimeContextBlock } from "../services/time/time.service";
 import { triggerStorageService } from "../packages/core/triggers/triggerStorageService";
 import { buildAssistantCapabilitiesContextBlock } from "./knowledge/assistant-capabilities.service";
-
-function contactInScope(accountId: string, row: { accountId: string | null; chain: string }): boolean {
-  if (row.chain !== "sui") return false;
-  if (row.accountId != null && row.accountId !== accountId) return false;
-  return true;
-}
 
 export type CompactContextOptions = {
   pendingProposalsSummary?: string;
@@ -96,9 +91,10 @@ export async function buildCompactAssistantContext(
     }
   }
 
+  const walletAccounts = walletAccountIdSet();
   const contacts = contactRepository
     .list()
-    .filter((c) => contactInScope(accountId, c))
+    .filter((c) => isContactVisibleInWallet(c, walletAccounts))
     .slice(0, 8)
     .map((c) => `${c.name}:${c.address.slice(0, 10)}…`);
   lines.push(`CONTACTS: ${contacts.length ? contacts.join(", ") : "none"}`);

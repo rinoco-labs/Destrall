@@ -6,6 +6,7 @@ import { walletService } from "../../main/wallet/walletService";
 import { networkSettingsService } from "../../main/services/network/networkSettingsService";
 import { contactRepository } from "../../main/persistence/repositories/contactRepository";
 import type { ContactEntity } from "../../main/persistence/repositories/contactRepository";
+import { isContactVisibleInWallet, walletAccountIdSet } from "../../services/contacts/contactScope";
 
 export type ScopedContact = Pick<ContactEntity, "id" | "name" | "address">;
 
@@ -35,12 +36,6 @@ export type ActionContext = {
 
 function networkDisplay(env: SuiChainEnvironment): string {
   return env.charAt(0).toUpperCase() + env.slice(1);
-}
-
-function contactInScope(c: ContactEntity, accountId: string): boolean {
-  if (c.chain !== "sui") return false;
-  if (c.accountId != null && c.accountId !== accountId) return false;
-  return true;
 }
 
 function resolveTokenSymbol(symbol: string, balances: TokenBalanceView[]): string | null {
@@ -74,9 +69,10 @@ export function createActionContext(accountId: string): ActionContext {
     },
     contacts: {
       searchContacts: async (query: string) => {
+        const walletAccounts = walletAccountIdSet();
         const rows = contactRepository.list(query);
         return rows
-          .filter((c) => contactInScope(c, accountId))
+          .filter((c) => isContactVisibleInWallet(c, walletAccounts))
           .map((c) => ({ id: c.id, name: c.name, address: c.address }));
       },
     },

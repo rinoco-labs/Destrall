@@ -49,7 +49,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     category: "Transfers",
     shortDescription: "Transfer Sui tokens to a contact or address after you approve a send proposal.",
     longDescription:
-      "Send moves tokens from your active Sui account to a saved contact or a pasted address. The Assistant resolves contacts by name when possible and shows a send proposal with token, amount, and recipient before any transaction is built for signing.",
+      "Send moves tokens from your active Sui account to a saved contact, a SuiNS name, or a pasted address. The Assistant resolves the recipient (address → contact name → SuiNS) before building a send proposal with token, amount, and destination for your review.",
     examples: [
       "Send 10 USDC to Alex",
       "Transfer 0.5 SUI to 0xabc…",

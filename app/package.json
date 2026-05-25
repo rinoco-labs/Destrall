@@ -64,6 +64,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@mysten/sui": "^2.16.2",
+    "@mysten/suins": "^1.1.4",
     "@mysten/wallet-standard": "^0.20.3",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
