@@ -7,44 +7,13 @@ import {
   triggerIdInputSchema,
   triggerNameHintInputSchema,
 } from "./triggers.schemas";
-import { parseTriggerFromText, categoryLabel } from "./triggerParser";
+import { parseTriggerFromText } from "./triggerParser";
 import { buildTriggerProposal } from "./triggerProposalBuilder";
 import { triggerStorageService } from "./triggerStorageService";
 import { executeDueTriggerById } from "./triggerExecutor";
 import type { TriggerDraft, TriggerRecord } from "./triggers.types";
 import { defaultNextCheckAtIso } from "../../../services/time/time.service";
-import { formatTriggerNextCheckLabel } from "../../../services/time/trigger-schedule-display";
-
-function recordToListItem(r: TriggerRecord): TriggerListResult["triggers"][number] {
-  const cond = JSON.parse(r.conditionJson) as Record<string, unknown>;
-  const action = JSON.parse(r.actionJson) as Record<string, unknown>;
-  let conditionText = r.description;
-  if (r.type === "price" && cond.asset && cond.operator && cond.priceUsd) {
-    conditionText = `${cond.asset} ${cond.operator} $${cond.priceUsd}`;
-  }
-  let actionText = r.description;
-  if (action.type === "swap") {
-    actionText = `Swap ${action.amount} ${action.fromToken} → ${action.toToken}`;
-  } else if (action.type === "yield_collect") {
-    actionText = "Collect Navi yield";
-  }
-  const nextCheckLabel = formatTriggerNextCheckLabel(r);
-
-  return {
-    id: r.id,
-    name: r.name,
-    type: r.type,
-    typeLabel: categoryLabel(r.type),
-    status: r.status,
-    conditionSummary: conditionText,
-    actionSummary: actionText,
-    nextCheckAt: r.nextCheckAt,
-    nextCheckLabel,
-    lastTriggeredAt: r.lastTriggeredAt,
-    executionCount: r.executionCount,
-    maxExecutions: r.maxExecutions,
-  };
-}
+import { mapTriggerRecordToListItem } from "../../../services/triggers/triggerListMapper";
 
 function findTriggerByNameHint(accountId: string, hint: string): TriggerRecord | null {
   const needle = hint.toLowerCase();
@@ -108,7 +77,7 @@ export async function listTriggersAction(
   const rows = triggerStorageService.list(ctx.accountId);
   const block: TriggerListResult = {
     type: "trigger_list",
-    triggers: rows.map(recordToListItem),
+    triggers: rows.map(mapTriggerRecordToListItem),
   };
   return [block];
 }

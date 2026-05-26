@@ -2,6 +2,7 @@ import type {
   AssistantMessageMetadataV1,
   AssistantStructuredResult,
   SwapProposalResult,
+  TriggerListResult,
 } from "./assistantResultTypes";
 
 export function parseAssistantMessageMetadata(raw: string | null | undefined): AssistantStructuredResult[] {
@@ -47,5 +48,17 @@ export function patchStructuredProposal(
     }
     return b;
   });
+  return serializeAssistantMessageMetadata(next);
+}
+
+/** Replace trigger rows in every `trigger_list` block (e.g. after pause/delete in chat UI). */
+export function patchTriggerListInMetadata(
+  raw: string | null | undefined,
+  triggers: TriggerListResult["triggers"],
+): string {
+  const blocks = parseAssistantMessageMetadata(raw);
+  const next = blocks.map((b) =>
+    b.type === "trigger_list" ? ({ ...b, triggers } satisfies TriggerListResult) : b,
+  );
   return serializeAssistantMessageMetadata(next);
 }

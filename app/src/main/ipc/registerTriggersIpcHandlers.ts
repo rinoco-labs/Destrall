@@ -7,6 +7,7 @@ import { runTriggerSchedulerNow } from "../../packages/core/triggers/triggerSche
 import { walletService } from "../wallet/walletService";
 import { networkSettingsService } from "../services/network/networkSettingsService";
 import type { TriggerProposalSnapshotV1 } from "../../packages/core/triggers/triggers.types";
+import { shortTriggerAccountId } from "../../services/triggers/triggerDebug";
 
 function ok<T>(data: T): RpcResult<T> {
   return { ok: true, data };
@@ -37,6 +38,12 @@ export function registerTriggersIpcHandlers() {
     if (!parsed.success) return fail(new Error("Invalid request"));
     try {
       const rows = triggerRepository.listByAccount(parsed.data.accountId);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[triggers] loaded triggers", {
+          count: rows.length,
+          accountId: shortTriggerAccountId(parsed.data.accountId),
+        });
+      }
       return ok(rows);
     } catch (e) {
       return fail(e);
@@ -85,6 +92,12 @@ export function registerTriggersIpcHandlers() {
     try {
       const row = triggerRepository.updateStatus(parsed.data.triggerId, parsed.data.accountId, "paused");
       if (!row) return fail(new Error("Trigger not found"));
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[triggers] updated trigger status", {
+          triggerId: parsed.data.triggerId,
+          status: "paused",
+        });
+      }
       return ok(row);
     } catch (e) {
       return fail(e);
@@ -97,6 +110,12 @@ export function registerTriggersIpcHandlers() {
     try {
       const row = triggerRepository.updateStatus(parsed.data.triggerId, parsed.data.accountId, "active");
       if (!row) return fail(new Error("Trigger not found"));
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[triggers] updated trigger status", {
+          triggerId: parsed.data.triggerId,
+          status: "active",
+        });
+      }
       runTriggerSchedulerNow(parsed.data.accountId);
       return ok(row);
     } catch (e) {
@@ -110,6 +129,9 @@ export function registerTriggersIpcHandlers() {
     try {
       const row = triggerRepository.updateStatus(parsed.data.triggerId, parsed.data.accountId, "deleted");
       if (!row) return fail(new Error("Trigger not found"));
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[triggers] deleted trigger", { triggerId: parsed.data.triggerId });
+      }
       return ok(row);
     } catch (e) {
       return fail(e);

@@ -147,6 +147,10 @@ export async function executeTriggerIfDue(
   record: TriggerRecord,
   ctx?: ActionContext,
 ): Promise<TriggerExecutionOutcome> {
+  if (record.status !== "active") {
+    return { status: "skipped", error: `Trigger is ${record.status}` };
+  }
+
   const account = walletService.getWalletAccount(record.accountId);
   if (!account) {
     return { status: "skipped", error: "Account not found" };

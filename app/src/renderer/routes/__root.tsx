@@ -11,6 +11,7 @@ import { AppProviders } from "@/components/app-providers";
 import { WalletGate } from "@/components/wallet-gate";
 import { NetworkWalletQuerySync } from "@/components/network-wallet-query-sync";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -83,6 +84,7 @@ function RootComponent() {
       <NetworkWalletQuerySync />
       <AppProviders />
       <UpdateBanner />
+      <Toaster richColors closeButton />
       <WalletGate>
         <Outlet />
       </WalletGate>

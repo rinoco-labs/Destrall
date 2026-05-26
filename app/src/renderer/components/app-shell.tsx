@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import {
   Globe,
   Home,
-  MessageSquareText,
+  Sparkles,
   // Store,
   Settings as SettingsIcon,
   // Code2,
@@ -31,7 +31,7 @@ type NavItem = {
 
 const TOP_NAV: NavItem[] = [
   { key: "home", i18nKey: "nav.home", to: "/home", icon: Home },
-  { key: "assistant", i18nKey: "nav.assistant", to: "/assistant", icon: MessageSquareText },
+  { key: "assistant", i18nKey: "nav.assistant", to: "/assistant", icon: Sparkles },
   { key: "browser", i18nKey: "nav.browser", to: "/browser", icon: Globe },
   // { key: "store", i18nKey: "nav.store", to: "/store", icon: Store },
 ];

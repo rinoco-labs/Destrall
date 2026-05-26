@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { getDatabase } from "../database";
 import type {
   TriggerApprovalLimits,
@@ -84,7 +85,11 @@ function mapExecution(row: ExecutionRow): TriggerExecutionRecord {
 }
 
 export class TriggerRepository {
-  private readonly db = getDatabase();
+  private readonly db: DatabaseSync;
+
+  constructor(db: DatabaseSync = getDatabase()) {
+    this.db = db;
+  }
 
   listByAccount(accountId: string, statusFilter?: TriggerStatus[]): TriggerRecord[] {
     if (statusFilter?.length) {

@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { Loader2, Users, Zap } from "lucide-react";
 import type {
   AssistantStructuredResult,
   CompositeSwapThenDepositResult,
@@ -14,6 +15,7 @@ import type {
 import { isProposalStructuredResult } from "../../../assistant/assistantResultTypes";
 import {
   patchStructuredProposal,
+  patchTriggerListInMetadata,
   serializeAssistantMessageMetadata,
 } from "../../../assistant/assistantMessageMetadata";
 import {
@@ -42,11 +44,24 @@ import {
 import { PendingProposalCriticalFlows } from "@/components/PendingProposalCriticalFlows";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import {
   desktopTriggersApprove,
   desktopTriggersDelete,
+  desktopTriggersList,
   desktopTriggersPause,
   desktopTriggersResume,
 } from "@/lib/desktopTriggers";
+import { mapTriggerRecordsToListResult } from "@services/triggers/triggerListMapper";
 
 function proposalToActionMessage(
   messageId: string,
@@ -480,6 +495,18 @@ export function AssistantStructuredMessageRenderer({
     [accountId, chatId, patchProposal, onReloadThread],
   );
 
+  const patchTriggerList = useCallback(
+    async (triggers: TriggerListResult["triggers"]) => {
+      const nextMeta = patchTriggerListInMetadata(meta, triggers);
+      setMeta(nextMeta);
+      setBlocks((prev) =>
+        prev.map((b) => (b.type === "trigger_list" ? { ...b, triggers } : b)),
+      );
+      await onUpdateMessage(nextMeta);
+    },
+    [meta, onUpdateMessage],
+  );
+
   return (
     <div className="space-y-3">
       <PendingProposalCriticalFlows blocks={blocks} />
@@ -530,6 +557,7 @@ export function AssistantStructuredMessageRenderer({
               if (isProposalStructuredResult(b) && b.status === "pending") void handleReject(b.proposalId);
             }}
             onReloadThread={onReloadThread}
+            onPatchTriggerList={patchTriggerList}
           />
         </Fragment>
       ))}
@@ -626,6 +654,7 @@ function StructuredBlockView({
   onReject,
   onReloadThread,
   onTryPrompt,
+  onPatchTriggerList,
 }: {
   accountId: string;
   chatId: string;
@@ -637,6 +666,7 @@ function StructuredBlockView({
   onReject: () => void;
   onReloadThread: () => Promise<void>;
   onTryPrompt?: (prompt: string) => void;
+  onPatchTriggerList: (triggers: TriggerListResult["triggers"]) => Promise<void>;
 }) {
   switch (block.type) {
     case "assistant_capabilities":
@@ -921,7 +951,7 @@ function StructuredBlockView({
         <TriggerListCard
           accountId={accountId}
           block={block}
-          onReloadThread={onReloadThread}
+          onPatchTriggerList={onPatchTriggerList}
         />
       );
     case "time_info":
@@ -1053,67 +1083,175 @@ function TriggerProposalCard({
   );
 }
 
+type TriggerListItem = TriggerListResult["triggers"][number];
+type TriggerRowAction = { triggerId: string; kind: "pause" | "resume" | "delete" } | null;
+
 function TriggerListCard({
   accountId,
   block,
-  onReloadThread,
+  onPatchTriggerList,
 }: {
   accountId: string;
   block: TriggerListResult;
-  onReloadThread: () => Promise<void>;
+  onPatchTriggerList: (triggers: TriggerListResult["triggers"]) => Promise<void>;
 }) {
+  const [triggers, setTriggers] = useState<TriggerListItem[]>(block.triggers);
+  const [pendingAction, setPendingAction] = useState<TriggerRowAction>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TriggerListItem | null>(null);
+
+  const syncTriggers = useCallback(async () => {
+    const rows = await desktopTriggersList(accountId);
+    const items = mapTriggerRecordsToListResult(rows);
+    setTriggers(items);
+    await onPatchTriggerList(items);
+    return items;
+  }, [accountId, onPatchTriggerList]);
+
+  useEffect(() => {
+    setTriggers(block.triggers);
+  }, [block.triggers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await desktopTriggersList(accountId);
+        if (!cancelled) {
+          setTriggers(mapTriggerRecordsToListResult(rows));
+        }
+      } catch (e) {
+        console.warn("[triggers] chat list refresh failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  const runStatusAction = async (triggerId: string, kind: "pause" | "resume") => {
+    setPendingAction({ triggerId, kind });
+    try {
+      if (kind === "pause") {
+        await desktopTriggersPause(accountId, triggerId);
+      } else {
+        await desktopTriggersResume(accountId, triggerId);
+      }
+      await syncTriggers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `Could not ${kind} trigger`);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const triggerId = deleteTarget.id;
+    setPendingAction({ triggerId, kind: "delete" });
+    try {
+      await desktopTriggersDelete(accountId, triggerId);
+      setDeleteTarget(null);
+      await syncTriggers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete trigger");
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const isRowBusy = (triggerId: string) => pendingAction?.triggerId === triggerId;
+
   return (
     <div className="rounded-2xl border border-border bg-card/60 p-4 max-w-md space-y-3 text-sm">
       <p className="text-[10px] font-bold tracking-[0.18em] text-muted-foreground uppercase">Your triggers</p>
-      {block.triggers.length === 0 ? (
+      {triggers.length === 0 ? (
         <p className="text-muted-foreground text-xs">No triggers for this account.</p>
       ) : (
         <ul className="space-y-2">
-          {block.triggers.map((t) => (
-            <li key={t.id} className="rounded-lg border border-border/60 p-3 space-y-1">
-              <p className="font-medium text-sm">{t.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {t.typeLabel} · {t.status}
-              </p>
-              <p className="text-xs">{t.conditionSummary}</p>
-              <p className="text-xs text-muted-foreground">{t.actionSummary}</p>
-              {t.nextCheckLabel ? (
-                <p className="text-xs text-muted-foreground">Next: {t.nextCheckLabel}</p>
-              ) : null}
-              <div className="flex flex-wrap gap-1 pt-1">
-                {t.status === "active" && (
+          {triggers.map((t) => {
+            const busy = isRowBusy(t.id);
+            const pausing = busy && pendingAction?.kind === "pause";
+            const resuming = busy && pendingAction?.kind === "resume";
+            const deleting = busy && pendingAction?.kind === "delete";
+
+            return (
+              <li key={t.id} className="rounded-lg border border-border/60 p-3 space-y-1">
+                <p className="font-medium text-sm">{t.name}</p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {t.typeLabel} · {t.status}
+                </p>
+                <p className="text-xs">{t.conditionSummary}</p>
+                <p className="text-xs text-muted-foreground">{t.actionSummary}</p>
+                {t.nextCheckLabel ? (
+                  <p className="text-xs text-muted-foreground">Next: {t.nextCheckLabel}</p>
+                ) : null}
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {t.status === "active" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={busy}
+                      onClick={() => void runStatusAction(t.id, "pause")}
+                    >
+                      {pausing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Pause"}
+                    </Button>
+                  )}
+                  {t.status === "paused" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={busy}
+                      onClick={() => void runStatusAction(t.id, "resume")}
+                    >
+                      {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : "Resume"}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => void desktopTriggersPause(accountId, t.id).then(onReloadThread)}
+                    className="h-7 text-xs text-destructive"
+                    disabled={busy}
+                    onClick={() => setDeleteTarget(t)}
                   >
-                    Pause
+                    {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Delete"}
                   </Button>
-                )}
-                {t.status === "paused" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => void desktopTriggersResume(accountId, t.id).then(onReloadThread)}
-                  >
-                    Start
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-destructive"
-                  onClick={() => void desktopTriggersDelete(accountId, t.id).then(onReloadThread)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </li>
-          ))}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !pendingAction) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this trigger?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the trigger and it will no longer run.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pendingAction?.kind === "delete"}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pendingAction?.kind === "delete"}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              {pendingAction?.kind === "delete" ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
