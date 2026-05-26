@@ -100,6 +100,7 @@ interface ChainAdapter {
 ## Contacts
 
 - Stored as **non-secret** records (name, address, network) in local DB via main process; renderer reads through IPC.
+- **Assistant sends** resolve the recipient in `prepare_send` before building a transaction: full Sui address (`0x` + 64 hex) → saved contact name (same visibility as the Contacts screen: any Sui contact in the wallet) → SuiNS name via `@mysten/suins` on the active cluster (mainnet/testnet; devnet uses testnet registry). Ambiguous contact matches show a disambiguation card; unresolved recipients return an error (no transaction).
 
 ## Local Wallet State
 
