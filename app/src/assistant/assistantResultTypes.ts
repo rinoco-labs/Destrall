@@ -124,6 +124,22 @@ export type ContactDisambiguationResult = {
   matches: Array<{ id: string; name: string; address: string }>;
 };
 
+/** User must pick one token when multiple wallet balances match the query. */
+export type TokenDisambiguationResult = {
+  type: "token_disambiguation";
+  disambiguationId: string;
+  action: "send" | "swap" | "navi_deposit" | "navi_withdraw" | "composite";
+  userInput: string;
+  /** Serialized action params to resume after pick (no secrets). */
+  pendingInput: Record<string, unknown>;
+  matches: Array<{
+    coinType: string;
+    symbol: string;
+    balanceFormatted: string;
+    source: "wallet" | "navi";
+  }>;
+};
+
 export type SwapProposalResult = {
   type: "swap_proposal";
   proposalId: string;
@@ -317,6 +333,7 @@ export type AssistantStructuredResult =
   | SwappableTokensResult
   | SendProposalResult
   | ContactDisambiguationResult
+  | TokenDisambiguationResult
   | SwapProposalResult
   | NaviDepositProposalResult
   | NaviWithdrawProposalResult

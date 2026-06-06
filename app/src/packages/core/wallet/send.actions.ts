@@ -4,6 +4,9 @@ import type { ActionContext } from "../../runtime/actionContext";
 import type { SendProposalSnapshot } from "../../runtime/transactionProposalTypes";
 import { parseOtherAccountRecipient } from "../../../services/contacts/contactResolutionService";
 import { resolveSendRecipient } from "../../../services/contacts/recipientResolutionService";
+import { validateSpendAmount, shortenCoinType, getTokenDecimalsFromBalance } from "../../../services/tokens/balanceValidation";
+import { findWalletBalanceByCoinType } from "../../../services/tokens/walletTokenResolver";
+import { logTokenAmountConversion } from "../../../shared/tokens/amounts";
 
 function asTrimmedString(v: unknown, field: string): string {
   if (typeof v !== "string") {
@@ -17,16 +20,18 @@ function asTrimmedString(v: unknown, field: string): string {
 }
 
 function buildSendCard(params: {
+  requestedToken: string;
+  resolvedBalance: { symbol: string; balanceFormatted: string; coinType: string; decimals: number };
   summary: {
     symbol: string;
     amountFormatted: string;
     recipient: string;
     gasBudgetFormatted: string;
+    decimals: number;
   };
   network: string;
   fromAccountLabel: string;
   recipientDisplayName?: string;
-  coinType: string;
   amountRaw: string;
   warnings: string[];
 }): AssistantProposalCard {
@@ -55,9 +60,12 @@ function buildSendCard(params: {
     ],
     details: [
       { k: "Action", v: "Sui transfer" },
-      { k: "Token", v: params.summary.symbol },
-      { k: "Coin type", v: params.coinType },
-      { k: "Amount (formatted)", v: `${params.summary.amountFormatted} ${params.summary.symbol}` },
+      { k: "Requested token", v: params.requestedToken },
+      { k: "Resolved token", v: params.resolvedBalance.symbol },
+      { k: "Decimals", v: String(params.summary.decimals) },
+      { k: "Wallet balance", v: `${params.resolvedBalance.balanceFormatted} ${params.resolvedBalance.symbol}` },
+      { k: "Coin type", v: shortenCoinType(params.resolvedBalance.coinType) },
+      { k: "Amount", v: `${params.summary.amountFormatted} ${params.summary.symbol}` },
       { k: "Amount (raw)", v: params.amountRaw },
       { k: "To", v: toLabel },
       { k: "Recipient address", v: params.summary.recipient },
@@ -83,6 +91,7 @@ export async function prepareSendAction(
   const token = asTrimmedString(input.token, "token");
   const amount = asTrimmedString(input.amount, "amount");
   let recipient = asTrimmedString(input.recipient, "recipient");
+  const coinTypeOverride = typeof input.coinType === "string" ? input.coinType.trim() : undefined;
 
   const account = ctx.wallet.getActiveAccount();
   if (!account || account.chain !== "sui") {
@@ -90,16 +99,73 @@ export async function prepareSendAction(
   }
 
   const balances = await ctx.wallet.getBalances();
-  const coinType = ctx.tokens.resolveTokenSymbol(token, balances);
-  if (!coinType) {
-    return [
-      {
-        type: "error",
-        message: `Could not resolve "${token}" to a coin in this wallet. Check the symbol and try again.`,
-        code: "unknown_token",
-      },
-    ];
+
+  let resolvedBalance;
+  if (coinTypeOverride) {
+    const row = findWalletBalanceByCoinType(balances, coinTypeOverride);
+    if (!row) {
+      return [
+        {
+          type: "error",
+          message: `The selected token is not in the currently connected wallet. Switch accounts or deposit the token first.`,
+          code: "unknown_token",
+        },
+      ];
+    }
+    resolvedBalance = { balance: row, userInput: token, matchReason: "user_pick" };
+  } else {
+    const tokenResult = ctx.tokens.resolveWalletToken(token, balances, { requirePositiveBalance: true });
+    if (tokenResult.kind === "not_found") {
+      return [{ type: "error", message: tokenResult.message, code: "unknown_token" }];
+    }
+    if (tokenResult.kind === "ambiguous") {
+      return [
+        {
+          type: "token_disambiguation",
+          disambiguationId: randomUUID(),
+          action: "send",
+          userInput: token,
+          pendingInput: { token, amount, recipient },
+          matches: tokenResult.candidates.map((c) => ({
+            coinType: c.coinType,
+            symbol: c.symbol,
+            balanceFormatted: c.balanceFormatted,
+            source: "wallet" as const,
+          })),
+        },
+      ];
+    }
+    resolvedBalance = tokenResult;
   }
+
+  const spendCheck = validateSpendAmount({
+    amountDisplay: amount,
+    balance: resolvedBalance.balance,
+    actionLabel: "This send",
+  });
+  if (!spendCheck.ok) {
+    return [{ type: "error", message: spendCheck.message, code: spendCheck.code }];
+  }
+
+  let walletDecimals: number;
+  try {
+    walletDecimals = getTokenDecimalsFromBalance(resolvedBalance.balance);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not load decimals for this token. Refresh balances and try again.";
+    return [{ type: "error", message: msg, code: "decimals_unresolved" }];
+  }
+
+  logTokenAmountConversion({
+    context: "assistant-send",
+    tokenInput: token,
+    resolvedSymbol: resolvedBalance.balance.symbol,
+    coinType: resolvedBalance.balance.coinType,
+    decimals: walletDecimals,
+    humanAmount: amount,
+    rawAmount: spendCheck.amountRaw.toString(),
+    balanceRaw: resolvedBalance.balance.balanceRaw,
+    validation: "prepared",
+  });
 
   const net = ctx.network.getActiveNetwork();
   const contacts = await ctx.contacts.searchContacts("");
@@ -168,12 +234,16 @@ export async function prepareSendAction(
   }
 
   const warnings: string[] = [];
+  const coinType = resolvedBalance.balance.coinType;
 
   try {
     const prep = await ctx.wallet.prepareSendTransaction({
       recipient: recipientAddress,
       coinType,
       amountDisplay: amount,
+      walletDecimals,
+      walletBalanceRaw: resolvedBalance.balance.balanceRaw,
+      walletSymbol: resolvedBalance.balance.symbol,
     });
     const { summary } = prep;
 
@@ -184,19 +254,24 @@ export async function prepareSendAction(
       recipientAddress: summary.recipient,
       coinType: summary.coinType,
       amountDisplay: amount,
+      decimals: walletDecimals,
+      walletBalanceRaw: resolvedBalance.balance.balanceRaw,
+      symbol: resolvedBalance.balance.symbol,
     };
 
     const card = buildSendCard({
+      requestedToken: token,
+      resolvedBalance: resolvedBalance.balance,
       summary: {
         symbol: summary.symbol,
         amountFormatted: summary.amountFormatted,
         recipient: summary.recipient,
         gasBudgetFormatted: summary.gasBudgetFormatted,
+        decimals: summary.decimals,
       },
       network: net.displayName,
       fromAccountLabel: `${account.name} (${account.address.slice(0, 8)}…)`,
       recipientDisplayName,
-      coinType: summary.coinType,
       amountRaw: summary.amountRaw,
       warnings,
     });

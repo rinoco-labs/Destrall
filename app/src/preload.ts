@@ -163,6 +163,13 @@ const api: DestrallApi = {
       disambiguationId: string;
       pickedMatchId: string;
     }) => ipcRenderer.invoke(IPCChannels.assistantChatResolveContactDisambiguation, payload),
+    resolveTokenDisambiguation: (payload: {
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      disambiguationId: string;
+      pickedCoinType: string;
+    }) => ipcRenderer.invoke(IPCChannels.assistantChatResolveTokenDisambiguation, payload),
   },
   nativeBrowser: {
     setViewportBounds: (payload) =>

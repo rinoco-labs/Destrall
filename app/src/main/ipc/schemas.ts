@@ -80,6 +80,9 @@ export const chainPrepareTransferSchema = z.object({
   recipient: z.string().min(1).max(256),
   coinType: z.string().min(1).max(512),
   amountDisplay: z.string().min(1).max(64),
+  walletDecimals: z.number().int().min(0).max(36).optional(),
+  walletBalanceRaw: z.string().max(128).optional(),
+  walletSymbol: z.string().max(32).optional(),
 });
 
 export const chainConfirmTransferSchema = z.object({

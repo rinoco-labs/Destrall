@@ -1,58 +1,37 @@
 import type { TokenBalanceView } from "../../../types/blockchain";
 import { decimalStringToRawAmount } from "../../../main/services/chains/amount-utils";
-import { expandUserTokenAlias } from "../../../services/tokens/swappableTokenRegistry";
+import { resolveWalletToken } from "../../../services/tokens/walletTokenResolver";
+import { validateSpendAmount } from "../../../services/tokens/balanceValidation";
 
 export type FromWalletResolveOk = { kind: "ok"; balance: TokenBalanceView };
-export type FromWalletResolveErr = { kind: "error"; message: string };
+export type FromWalletResolveErr = { kind: "error"; message: string; code?: string };
 
 /**
- * Pick the wallet balance row the user intends to spend. Does not call Aftermath or the registry.
+ * Pick the wallet balance row the user intends to spend.
  */
 export function resolveSpendTokenFromWallet(params: {
   userToken: string;
   balances: TokenBalanceView[];
+  walletAddress?: string;
 }): FromWalletResolveOk | FromWalletResolveErr {
-  const raw = params.userToken.trim();
-  if (!raw) {
-    return { kind: "error", message: "You do not have enough of that token to swap." };
-  }
-
-  const balances = params.balances;
-  const display = expandUserTokenAlias(raw);
-  const displayUpper = display.toUpperCase();
-
-  const byExactType = balances.find((b) => b.coinType.toLowerCase() === raw.toLowerCase());
-  if (byExactType) {
-    if (BigInt(byExactType.balanceRaw) <= 0n) {
-      return { kind: "error", message: `You do not have enough ${byExactType.symbol} to swap.` };
-    }
-    return { kind: "ok", balance: byExactType };
-  }
-
-  const candidates = balances.filter((b) => {
-    if (b.symbol.toUpperCase() === displayUpper) return true;
-    const tail = (b.coinType.split("::").pop() ?? "").toUpperCase();
-    return tail === displayUpper;
+  const result = resolveWalletToken(params.userToken, params.balances, {
+    requirePositiveBalance: true,
+    walletAddress: params.walletAddress,
+    logContext: "swap_spend",
   });
 
-  const positive = candidates.filter((b) => BigInt(b.balanceRaw) > 0n);
-  if (positive.length === 1) {
-    const only = positive[0];
-    if (only) return { kind: "ok", balance: only };
+  if (result.kind === "resolved") {
+    return { kind: "ok", balance: result.balance };
   }
-  if (positive.length > 1) {
+  if (result.kind === "ambiguous") {
+    const labels = result.candidates.map((c) => `${c.symbol} (${c.balanceFormatted})`).join(", ");
     return {
       kind: "error",
-      message: `Multiple balances match “${raw}”. Try using the full coin type from your portfolio.`,
+      code: "ambiguous_token",
+      message: `I found multiple tokens matching "${params.userToken}": ${labels}. Specify the full coin type or pick from your portfolio.`,
     };
   }
-
-  const zeroBal = candidates[0];
-  if (zeroBal) {
-    return { kind: "error", message: `You do not have enough ${zeroBal.symbol} to swap.` };
-  }
-
-  return { kind: "error", message: `You do not have enough ${displayUpper} to swap.` };
+  return { kind: "error", code: "unknown_token", message: result.message };
 }
 
 export function assertSwapSpendWithinBalance(params: {
@@ -60,13 +39,11 @@ export function assertSwapSpendWithinBalance(params: {
   decimals: number;
   balance: TokenBalanceView;
 }): { ok: true; amountRaw: bigint } | { ok: false; message: string } {
-  try {
-    const amountRaw = decimalStringToRawAmount(params.amountDisplay.trim(), params.decimals);
-    if (amountRaw > BigInt(params.balance.balanceRaw)) {
-      return { ok: false, message: `You do not have enough ${params.balance.symbol} to swap.` };
-    }
-    return { ok: true, amountRaw };
-  } catch {
-    return { ok: false, message: "Enter a valid swap amount." };
-  }
+  const check = validateSpendAmount({
+    amountDisplay: params.amountDisplay,
+    balance: params.balance,
+    actionLabel: "This swap",
+  });
+  if (!check.ok) return { ok: false, message: check.message };
+  return { ok: true, amountRaw: check.amountRaw };
 }

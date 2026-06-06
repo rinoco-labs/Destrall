@@ -60,6 +60,9 @@ export async function desktopPrepareTransfer(payload: {
   recipient: string;
   coinType: string;
   amountDisplay: string;
+  walletDecimals?: number;
+  walletBalanceRaw?: string;
+  walletSymbol?: string;
 }): Promise<TransferPrepareResult> {
   return unwrap(api().chain.prepareTransfer(payload));
 }

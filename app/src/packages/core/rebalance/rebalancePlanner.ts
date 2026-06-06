@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { RebalanceProposalResult } from "../../../assistant/assistantResultTypes";
 import type { TokenBalanceView } from "../../../types/blockchain";
+import { expandUserTokenAlias, tokenLabelsMatch } from "../../../services/tokens/tokenAliases";
 
 /** Floor / ceiling for per-leg notional filter (USD) */
 const DUST_USD_MIN = 0.35;
@@ -144,9 +145,24 @@ export function calculateSwapDeltas(
     delta.set(s, (tgtVal.get(s) ?? 0) - (curVal.get(s) ?? 0));
   }
 
-  const balBySym = new Map(balances.map((b) => [b.symbol.toUpperCase(), b]));
+  const balBySym = new Map<string, TokenBalanceView>();
+  for (const b of balances) {
+    balBySym.set(b.symbol.toUpperCase(), b);
+    const canonical = expandUserTokenAlias(b.symbol).toUpperCase();
+    if (!balBySym.has(canonical)) balBySym.set(canonical, b);
+  }
+
+  const resolveBal = (sym: string): TokenBalanceView | undefined => {
+    const u = sym.toUpperCase();
+    const direct = balBySym.get(u);
+    if (direct) return direct;
+    for (const b of balances) {
+      if (tokenLabelsMatch(sym, b.symbol)) return b;
+    }
+    return undefined;
+  };
   const usdPerUnit = (sym: string): number | null => {
-    const b = balBySym.get(sym);
+    const b = resolveBal(sym);
     if (!b) return null;
     const usd = parseBalanceUsd(b);
     const raw = parseFloat(b.balanceFormatted.replace(/,/g, ""));
@@ -155,7 +171,7 @@ export function calculateSwapDeltas(
   };
 
   const formatAmt = (sym: string, units: number): string => {
-    const b = balBySym.get(sym);
+    const b = resolveBal(sym);
     const d = b?.decimals ?? 6;
     const s = units.toFixed(Math.min(6, d));
     return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") || "0";

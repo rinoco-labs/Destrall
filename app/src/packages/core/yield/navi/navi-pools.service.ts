@@ -176,11 +176,9 @@ export function clearNaviPoolsCache(): void {
 }
 
 export async function resolvePoolByAssetSymbol(pools: NaviPoolRow[], asset: string): Promise<NaviPoolRow | null> {
-  const u = asset.trim().toUpperCase();
-  const exact = pools.find((p) => p.symbol.toUpperCase() === u);
-  if (exact) return exact;
-  const partial = pools.find((p) => p.symbol.toUpperCase().includes(u) || u.includes(p.symbol.toUpperCase()));
-  return partial ?? null;
+  const { resolveNaviPoolByAsset } = await import("../../../../services/tokens/naviTokenResolver");
+  const result = resolveNaviPoolByAsset(pools, asset);
+  return result.kind === "resolved" ? result.pool : null;
 }
 
 export async function ensureNaviProtocolReachable(): Promise<void> {

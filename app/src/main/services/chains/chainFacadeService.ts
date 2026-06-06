@@ -85,6 +85,9 @@ class ChainFacadeService {
     recipient: string;
     coinType: string;
     amountDisplay: string;
+    walletDecimals?: number;
+    walletBalanceRaw?: string;
+    walletSymbol?: string;
   }): Promise<TransferPrepareResult> {
     const account = walletService.getWalletAccount(params.accountId);
     if (!account || account.chain !== "sui") {
@@ -96,6 +99,9 @@ class ChainFacadeService {
       recipient: params.recipient,
       coinType: params.coinType,
       amountDisplay: params.amountDisplay,
+      walletDecimals: params.walletDecimals,
+      walletBalanceRaw: params.walletBalanceRaw,
+      walletSymbol: params.walletSymbol,
     });
   }
 

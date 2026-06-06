@@ -118,7 +118,11 @@ export async function prepareSwapAction(
   }
 
   const balances = await ctx.wallet.getBalances();
-  const fromPick = resolveSpendTokenFromWallet({ userToken: parsed.data.fromToken, balances });
+  const fromPick = resolveSpendTokenFromWallet({
+    userToken: parsed.data.fromToken,
+    balances,
+    walletAddress: account.address,
+  });
   if (fromPick.kind === "error") {
     return [{ type: "error", message: fromPick.message, code: "insufficient_funds" }];
   }

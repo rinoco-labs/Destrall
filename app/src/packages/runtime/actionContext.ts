@@ -7,6 +7,10 @@ import { networkSettingsService } from "../../main/services/network/networkSetti
 import { contactRepository } from "../../main/persistence/repositories/contactRepository";
 import type { ContactEntity } from "../../main/persistence/repositories/contactRepository";
 import { isContactVisibleInWallet, walletAccountIdSet } from "../../services/contacts/contactScope";
+import {
+  resolveWalletToken,
+  type ResolveWalletTokenResult,
+} from "../../services/tokens/walletTokenResolver";
 
 export type ScopedContact = Pick<ContactEntity, "id" | "name" | "address">;
 
@@ -21,6 +25,9 @@ export type ActionContext = {
       recipient: string;
       coinType: string;
       amountDisplay: string;
+      walletDecimals?: number;
+      walletBalanceRaw?: string;
+      walletSymbol?: string;
     }): ReturnType<typeof chainFacadeService.prepareTransfer>;
   };
   contacts: {
@@ -30,7 +37,13 @@ export type ActionContext = {
     getActiveNetwork(): { environment: SuiChainEnvironment; displayName: string };
   };
   tokens: {
+    /** @deprecated Prefer resolveWalletToken for full ambiguity / error handling. */
     resolveTokenSymbol(symbol: string, balances: TokenBalanceView[]): string | null;
+    resolveWalletToken(
+      input: string,
+      balances: TokenBalanceView[],
+      options?: { requirePositiveBalance?: boolean },
+    ): ResolveWalletTokenResult;
   };
 };
 
@@ -39,15 +52,17 @@ function networkDisplay(env: SuiChainEnvironment): string {
 }
 
 function resolveTokenSymbol(symbol: string, balances: TokenBalanceView[]): string | null {
-  const u = symbol.trim().toUpperCase();
-  const row = balances.find((b) => b.symbol.toUpperCase() === u);
-  return row?.coinType ?? null;
+  const result = resolveWalletToken(symbol, balances, { requirePositiveBalance: true });
+  return result.kind === "resolved" ? result.balance.coinType : null;
 }
 
 /**
  * Safe capabilities for package actions. No mnemonic, private keys, PIN, or signers.
  */
 export function createActionContext(accountId: string): ActionContext {
+  const account = walletService.getWalletAccount(accountId);
+  const walletAddress = account?.address;
+
   return {
     accountId,
     wallet: {
@@ -59,12 +74,22 @@ export function createActionContext(accountId: string): ActionContext {
           .filter((a) => a.chain === "sui" && a.id !== accountId)
           .map((a) => ({ id: a.id, name: a.name, address: a.address }));
       },
-      prepareSendTransaction: ({ recipient, coinType, amountDisplay }) =>
+      prepareSendTransaction: ({
+        recipient,
+        coinType,
+        amountDisplay,
+        walletDecimals,
+        walletBalanceRaw,
+        walletSymbol,
+      }) =>
         chainFacadeService.prepareTransfer({
           accountId,
           recipient,
           coinType,
           amountDisplay,
+          walletDecimals,
+          walletBalanceRaw,
+          walletSymbol,
         }),
     },
     contacts: {
@@ -84,6 +109,12 @@ export function createActionContext(accountId: string): ActionContext {
     },
     tokens: {
       resolveTokenSymbol,
+      resolveWalletToken: (input, balances, options) =>
+        resolveWalletToken(input, balances, {
+          ...options,
+          walletAddress,
+          logContext: `account:${accountId}`,
+        }),
     },
   };
 }

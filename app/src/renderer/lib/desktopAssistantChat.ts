@@ -117,3 +117,13 @@ export async function desktopAssistantResolveContactDisambiguation(payload: {
 }): Promise<AssistantMessageRow> {
   return unwrap(api().assistantChat.resolveContactDisambiguation(payload));
 }
+
+export async function desktopAssistantResolveTokenDisambiguation(payload: {
+  accountId: string;
+  chatId: string;
+  messageId: string;
+  disambiguationId: string;
+  pickedCoinType: string;
+}): Promise<AssistantMessageRow> {
+  return unwrap(api().assistantChat.resolveTokenDisambiguation(payload));
+}

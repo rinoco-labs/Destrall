@@ -3,20 +3,29 @@ import { Transaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { isValidSuiAddress, normalizeSuiAddress } from "@mysten/sui/utils";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
-import { SUI_COIN_TYPE } from "../../../../config/chains/sui";
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
 import type {
   TransferExecuteResult,
   TransferPrepareResult,
   TransferPrepareSummary,
 } from "../../../../types/blockchain";
+import {
+  formatTokenAmount,
+  insufficientBalanceMessage,
+  logTokenAmountConversion,
+  parseTokenAmount,
+  SUI_DECIMALS,
+} from "../../../../shared/tokens/amounts";
 import { deriveSuiAccountFromMnemonic } from "./sui-wallet.service";
 import { walletSession } from "../../../wallet/walletSession";
 import { walletService } from "../../../wallet/walletService";
-import { formatTokenAmount } from "./sui-balance.service";
 import { SuiTokenMetadataService } from "./sui-token-metadata.service";
 import { getTransactionExplorerUrl } from "./sui-explorer.service";
-import { decimalStringToRawAmount } from "../amount-utils";
+import { resolveOnChainCoinType } from "./sui-coin-type-resolve";
+import {
+  isNormalizedSuiNativeCoin,
+  normalizeSuiCoinType,
+} from "./sui-coin-type-normalize";
 
 type PendingTransfer = {
   expiresAt: number;
@@ -26,6 +35,8 @@ type PendingTransfer = {
   recipient: string;
   coinType: string;
   amountRaw: string;
+  decimals: number;
+  symbol: string;
 };
 
 const pending = new Map<string, PendingTransfer>();
@@ -38,60 +49,26 @@ function cleanupExpired() {
   }
 }
 
-async function fetchAllCoinObjects(client: SuiJsonRpcClient, owner: string, coinType: string) {
-  const out: { coinObjectId: string; balance: string }[] = [];
-  let cursor: string | null | undefined;
-  do {
-    const page = await client.getCoins({ owner, coinType, cursor: cursor ?? undefined });
-    out.push(...page.data.map((c) => ({ coinObjectId: c.coinObjectId, balance: c.balance })));
-    cursor = page.hasNextPage ? page.nextCursor : null;
-  } while (cursor);
-  return out;
-}
-
 async function buildTransferTransaction(params: {
   client: SuiJsonRpcClient;
   sender: string;
   recipient: string;
   coinType: string;
   amount: bigint;
+  symbol: string;
+  decimals: number;
+  walletBalanceRaw?: string;
 }): Promise<Transaction> {
   const tx = new Transaction();
   tx.setSender(params.sender);
+  const normalized = normalizeSuiCoinType(params.coinType);
 
-  if (params.coinType === SUI_COIN_TYPE) {
-    const [sendCoin] = tx.splitCoins(tx.gas, [params.amount]);
-    tx.transferObjects([sendCoin], params.recipient);
-    return tx;
-  }
+  // Use SDK coin intent: draws from address balance + coin objects (SIP-58).
+  // Manual getCoins/merge only sees coin objects, not fundsInAddressBalance.
+  const sendCoin = isNormalizedSuiNativeCoin(normalized)
+    ? tx.coin({ balance: params.amount, useGasCoin: true })
+    : tx.coin({ type: normalized, balance: params.amount });
 
-  const coins = await fetchAllCoinObjects(params.client, params.sender, params.coinType);
-  if (!coins.length) {
-    throw new Error("No coins available for this token.");
-  }
-
-  const sorted = [...coins].sort((a, b) => {
-    const ba = BigInt(a.balance);
-    const bb = BigInt(b.balance);
-    if (ba === bb) return 0;
-    return ba > bb ? -1 : 1;
-  });
-
-  let total = 0n;
-  for (const c of sorted) {
-    total += BigInt(c.balance);
-  }
-  if (total < params.amount) {
-    throw new Error("Insufficient token balance.");
-  }
-
-  const primary = sorted[0];
-  const primaryObj = tx.object(primary.coinObjectId);
-  for (let i = 1; i < sorted.length; i++) {
-    tx.mergeCoins(primaryObj, [tx.object(sorted[i].coinObjectId)]);
-  }
-
-  const [sendCoin] = tx.splitCoins(primaryObj, [params.amount]);
   tx.transferObjects([sendCoin], params.recipient);
   return tx;
 }
@@ -101,26 +78,42 @@ async function ensureBalances(params: {
   address: string;
   coinType: string;
   amount: bigint;
+  symbol: string;
+  decimals: number;
+  walletBalanceRaw?: string;
 }) {
   const gasHeadroom = 50_000_000n;
+  const normalized = normalizeSuiCoinType(params.coinType);
   const suiBal = await params.client.getBalance({ owner: params.address });
   const suiTotal = BigInt(suiBal.totalBalance);
-  if (params.coinType === SUI_COIN_TYPE) {
+  if (isNormalizedSuiNativeCoin(normalized)) {
     if (suiTotal < params.amount + gasHeadroom) {
-      throw new Error("Insufficient balance for amount plus gas reserve.");
+      throw new Error("Insufficient SUI for the send amount plus gas reserve.");
     }
     return;
   }
   if (suiTotal < gasHeadroom) {
     throw new Error("Insufficient SUI for gas.");
   }
-  const coins = await fetchAllCoinObjects(params.client, params.address, params.coinType);
-  let total = 0n;
-  for (const c of coins) {
-    total += BigInt(c.balance);
-  }
+
+  const resolved = await resolveOnChainCoinType(
+    params.client,
+    params.address,
+    params.coinType,
+    params.walletBalanceRaw,
+  );
+  const total =
+    params.walletBalanceRaw != null ? BigInt(params.walletBalanceRaw) : resolved.totalBalance;
+
   if (total < params.amount) {
-    throw new Error("Insufficient token balance.");
+    throw new Error(
+      insufficientBalanceMessage({
+        symbol: params.symbol,
+        requiredRaw: params.amount,
+        availableRaw: total,
+        decimals: params.decimals,
+      }),
+    );
   }
 }
 
@@ -137,14 +130,37 @@ export class SuiTransferService {
     recipient: string;
     coinType: string;
     amountDisplay: string;
+    walletDecimals?: number;
+    walletBalanceRaw?: string;
+    walletSymbol?: string;
   }): Promise<TransferPrepareResult> {
     cleanupExpired();
     const client = this.getClient();
     const env = this.getEnvironment();
     const meta = this.getMetadata();
     const coinMeta = await meta.getCoinMetadata(params.coinType);
-    const amountRaw = decimalStringToRawAmount(params.amountDisplay, coinMeta.decimals).toString();
+    const decimals =
+      typeof params.walletDecimals === "number" && Number.isFinite(params.walletDecimals)
+        ? params.walletDecimals
+        : coinMeta.decimals;
+    if (typeof decimals !== "number" || !Number.isFinite(decimals) || decimals < 0) {
+      throw new Error("Could not load decimals for this token. Refresh balances and try again.");
+    }
+    const symbol = params.walletSymbol?.trim() || coinMeta.symbol;
+
+    const amountRaw = parseTokenAmount(params.amountDisplay, decimals, symbol).toString();
     const amount = BigInt(amountRaw);
+
+    logTokenAmountConversion({
+      context: "prepareTransfer",
+      resolvedSymbol: symbol,
+      coinType: params.coinType,
+      decimals,
+      humanAmount: params.amountDisplay,
+      rawAmount: amountRaw,
+      balanceRaw: params.walletBalanceRaw,
+      validation: "start",
+    });
 
     let recipient: string;
     try {
@@ -165,6 +181,9 @@ export class SuiTransferService {
       address: params.senderAddress,
       coinType: params.coinType,
       amount,
+      symbol,
+      decimals,
+      walletBalanceRaw: params.walletBalanceRaw,
     });
 
     const tx = await buildTransferTransaction({
@@ -173,6 +192,9 @@ export class SuiTransferService {
       recipient,
       coinType: params.coinType,
       amount,
+      symbol,
+      decimals,
+      walletBalanceRaw: params.walletBalanceRaw,
     });
 
     const gasPrice = await client.getReferenceGasPrice();
@@ -196,18 +218,31 @@ export class SuiTransferService {
       recipient,
       coinType: params.coinType,
       amountRaw,
+      decimals,
+      symbol,
+    });
+
+    logTokenAmountConversion({
+      context: "prepareTransfer",
+      resolvedSymbol: symbol,
+      coinType: params.coinType,
+      decimals,
+      humanAmount: params.amountDisplay,
+      rawAmount: amountRaw,
+      balanceRaw: params.walletBalanceRaw,
+      validation: "ok",
     });
 
     const summary: TransferPrepareSummary = {
       coinType: params.coinType,
-      symbol: coinMeta.symbol,
-      decimals: coinMeta.decimals,
+      symbol,
+      decimals,
       amountRaw,
-      amountFormatted: formatTokenAmount(amount, coinMeta.decimals),
+      amountFormatted: formatTokenAmount(amount, decimals),
       recipient,
       sender: params.senderAddress,
       gasBudgetMist,
-      gasBudgetFormatted: formatTokenAmount(BigInt(gasBudgetMist), 9),
+      gasBudgetFormatted: formatTokenAmount(BigInt(gasBudgetMist), SUI_DECIMALS),
     };
 
     return { transferRequestId, summary };
@@ -251,6 +286,8 @@ export class SuiTransferService {
       recipient: p.recipient,
       coinType: p.coinType,
       amount,
+      symbol: p.symbol,
+      decimals: p.decimals,
     });
 
     const gasPrice = await client.getReferenceGasPrice();

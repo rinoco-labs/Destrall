@@ -3,7 +3,9 @@ import type { AssistantStructuredResult } from "../../../assistant/assistantResu
 import type { ActionContext } from "../actionContext";
 import { decimalStringToRawAmount } from "../../../main/services/chains/amount-utils";
 import { formatTokenAmount } from "../../../main/services/chains/sui/sui-balance.service";
-import { fetchNaviPools, resolvePoolByAssetSymbol } from "../../core/yield/navi/navi-pools.service";
+import { fetchNaviPools } from "../../core/yield/navi/navi-pools.service";
+import { resolveNaviPoolByAsset } from "../../../services/tokens/naviTokenResolver";
+import { resolveWalletToken } from "../../../services/tokens/walletTokenResolver";
 import { prepareSwapAction } from "../../core/swap/swap.actions";
 import { prepareYieldDepositAction } from "../../core/yield/navi/navi.actions";
 import type { CompositeProposalSnapshotV1, CompositeStepPreview } from "./compositeTypes";
@@ -36,23 +38,50 @@ export async function buildSwapThenDepositPlan(
   }
 
   const pools = await fetchNaviPools(net.environment, false);
-  const pool = await resolvePoolByAssetSymbol(pools, params.poolAssetSymbol);
-  if (!pool) {
+  const poolResult = resolveNaviPoolByAsset(pools, params.poolAssetSymbol);
+  if (poolResult.kind === "not_found") {
+    return [{ type: "error", message: poolResult.message, code: "unknown_pool" }];
+  }
+  if (poolResult.kind === "ambiguous") {
     return [
       {
         type: "error",
-        message: `Could not find a Navi pool for "${params.poolAssetSymbol}".`,
-        code: "unknown_pool",
+        message: `Multiple Navi pools match "${params.poolAssetSymbol}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}.`,
+        code: "ambiguous_pool",
       },
     ];
   }
+  const pool = poolResult.pool;
 
-  const spend = params.spendSymbol.trim().toUpperCase();
+  console.info("[composite] swap_then_deposit", {
+    spend: params.spendSymbol,
+    pool: pool.symbol,
+    amount: params.amount,
+  });
+
+  const balances = await ctx.wallet.getBalances();
+  const spendPick = resolveWalletToken(params.spendSymbol, balances, {
+    requirePositiveBalance: true,
+    walletAddress: account.address,
+    logContext: "composite_spend",
+  });
+  if (spendPick.kind === "not_found") {
+    return [{ type: "error", message: spendPick.message, code: "insufficient_funds" }];
+  }
+  if (spendPick.kind === "ambiguous") {
+    return [
+      {
+        type: "error",
+        message: `Multiple tokens match "${params.spendSymbol}" in your wallet: ${spendPick.candidates.map((c) => c.symbol).join(", ")}.`,
+        code: "ambiguous_token",
+      },
+    ];
+  }
+  const spendBal = spendPick.balance;
   const poolSym = pool.symbol.toUpperCase();
+  const spendSym = spendBal.symbol.toUpperCase();
 
-  console.info("[composite] swap_then_deposit", { spend, pool: poolSym, amount: params.amount });
-
-  if (spend === poolSym) {
+  if (spendSym === poolSym || spendBal.coinType === pool.coinType) {
     return prepareYieldDepositAction(
       {
         asset: pool.symbol,
@@ -61,12 +90,6 @@ export async function buildSwapThenDepositPlan(
       },
       ctx,
     );
-  }
-
-  const balances = await ctx.wallet.getBalances();
-  const spendBal = balances.find((b) => b.symbol.toUpperCase() === spend);
-  if (!spendBal) {
-    return [{ type: "error", message: `No ${spend} balance in this wallet.`, code: "insufficient_funds" }];
   }
 
   let swapAmountDisplay = params.amount.trim();
@@ -87,13 +110,19 @@ export async function buildSwapThenDepositPlan(
       return [{ type: "error", message: "Invalid swap amount.", code: "invalid_amount" }];
     }
     if (raw > BigInt(spendBal.balanceRaw)) {
-      return [{ type: "error", message: `Not enough ${spend} for that swap.`, code: "insufficient_funds" }];
+      return [
+        {
+          type: "error",
+          message: `Not enough ${spendBal.symbol} for that swap.`,
+          code: "insufficient_funds",
+        },
+      ];
     }
   }
 
   const swapBlocks = await prepareSwapAction(
     {
-      fromToken: spend,
+      fromToken: spendBal.symbol,
       toToken: pool.symbol,
       amount: swapAmountDisplay,
     },
@@ -110,7 +139,7 @@ export async function buildSwapThenDepositPlan(
   const depositAmountDisplay = outDisp;
 
   const plan = createSwapThenDepositPlan({
-    spendSymbol: spend,
+    spendSymbol: spendBal.symbol,
     poolSymbol: pool.symbol,
     swapAmountDisplay,
     depositAmountDisplay: `~${depositAmountDisplay}`,

@@ -4,14 +4,20 @@ import type { ActionContext } from "../../../runtime/actionContext";
 import { decimalStringToRawAmount } from "../../../../main/services/chains/amount-utils";
 import { formatTokenAmount } from "../../../../main/services/chains/sui/sui-balance.service";
 import { getSuiClientForEnvironment } from "../../../../main/services/chains/sui/sui-client.service";
-import { isNormalizedSuiNativeCoin } from "../../../../main/services/chains/sui/sui-coin-type-normalize";
+import {
+  isNormalizedSuiNativeCoin,
+  normalizeSuiCoinType,
+} from "../../../../main/services/chains/sui/sui-coin-type-normalize";
 import {
   getYieldPositionsInputSchema,
   listYieldPoolsInputSchema,
   prepareYieldDepositInputSchema,
   prepareYieldWithdrawInputSchema,
 } from "./navi.schemas";
-import { fetchNaviPools, resolvePoolByAssetSymbol } from "./navi-pools.service";
+import { fetchNaviPools } from "./navi-pools.service";
+import { resolveNaviPoolByAsset } from "../../../../services/tokens/naviTokenResolver";
+import { findWalletBalanceByCoinType } from "../../../../services/tokens/walletTokenResolver";
+import { validateSpendAmount } from "../../../../services/tokens/balanceValidation";
 import { buildNaviPositionViews, fetchNaviPositionsOnChain } from "./navi-positions.service";
 import {
   readStoredYieldRiskProfile,
@@ -188,21 +194,33 @@ export async function prepareYieldDepositAction(
   if (gate) return gate;
 
   const pools = await fetchNaviPools(net.environment, false);
-  const pool = await resolvePoolByAssetSymbol(pools, parsed.data.asset);
-  if (!pool) {
+  const poolResult = resolveNaviPoolByAsset(pools, parsed.data.asset);
+  if (poolResult.kind === "not_found") {
+    return [{ type: "error", message: poolResult.message, code: "unknown_asset" }];
+  }
+  if (poolResult.kind === "ambiguous") {
     return [
       {
         type: "error",
-        message: `Could not find a Navi pool for "${parsed.data.asset.trim()}". Try listing pools first.`,
-        code: "unknown_asset",
+        message: `Multiple Navi pools match "${parsed.data.asset.trim()}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}. Be more specific.`,
+        code: "ambiguous_asset",
       },
     ];
   }
+  const pool = poolResult.pool;
 
   const balances = await ctx.wallet.getBalances();
-  const bal = balances.find((b) => b.symbol.toUpperCase() === pool.symbol.toUpperCase());
+  const bal =
+    findWalletBalanceByCoinType(balances, pool.coinType) ??
+    balances.find((b) => normalizeSuiCoinType(b.coinType) === normalizeSuiCoinType(pool.coinType));
   if (!bal) {
-    return [{ type: "error", message: `No ${pool.symbol} balance in this wallet.`, code: "insufficient_funds" }];
+    return [
+      {
+        type: "error",
+        message: `No ${pool.symbol} (wallet coin) in this connected wallet. Deposit requires the underlying token in your wallet first.`,
+        code: "insufficient_funds",
+      },
+    ];
   }
 
   const amountKind = parsed.data.amountKind ?? "absolute";
@@ -222,14 +240,13 @@ export async function prepareYieldDepositAction(
   }
 
   if (!isNormalizedSuiNativeCoin(pool.coinType)) {
-    if (BigInt(bal.balanceRaw) < amountRaw) {
-      return [
-        {
-          type: "error",
-          message: `You do not have enough ${pool.symbol} in this wallet for that deposit.`,
-          code: "insufficient_funds",
-        },
-      ];
+    const spendCheck = validateSpendAmount({
+      amountDisplay: amountDisplay,
+      balance: bal,
+      actionLabel: "This deposit",
+    });
+    if (!spendCheck.ok) {
+      return [{ type: "error", message: spendCheck.message, code: spendCheck.code }];
     }
   }
 
@@ -315,16 +332,20 @@ export async function prepareYieldWithdrawAction(
   }
 
   const pools = await fetchNaviPools(net.environment, false);
-  const pool = await resolvePoolByAssetSymbol(pools, parsed.data.asset);
-  if (!pool) {
+  const poolResult = resolveNaviPoolByAsset(pools, parsed.data.asset);
+  if (poolResult.kind === "not_found") {
+    return [{ type: "error", message: poolResult.message, code: "unknown_asset" }];
+  }
+  if (poolResult.kind === "ambiguous") {
     return [
       {
         type: "error",
-        message: `Could not find a Navi pool for "${parsed.data.asset.trim()}".`,
-        code: "unknown_asset",
+        message: `Multiple Navi pools match "${parsed.data.asset.trim()}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}.`,
+        code: "ambiguous_asset",
       },
     ];
   }
+  const pool = poolResult.pool;
 
   const onChain = await fetchNaviPositionsOnChain(account.address, net.environment);
   const pos = onChain.find((p) => p.assetId === pool.assetId);

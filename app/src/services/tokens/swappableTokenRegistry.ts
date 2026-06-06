@@ -3,6 +3,9 @@ import { swappableTokensConfig } from "../../config/swappableTokens.config";
 import { SuiTokenMetadataService } from "../../main/services/chains/sui/sui-token-metadata.service";
 import { getSuiClientForEnvironment } from "../../main/services/chains/sui/sui-client.service";
 import { normalizeSuiCoinType } from "../../main/services/chains/sui/sui-coin-type-normalize";
+import { findTokenAliasGroup, normalizeTokenInput } from "./tokenAliases";
+
+export { expandUserTokenAlias, findTokenAliasGroup, normalizeTokenInput } from "./tokenAliases";
 
 export type SwappableChainId = keyof typeof swappableTokensConfig;
 
@@ -25,25 +28,9 @@ function cacheKey(chain: SwappableChainId, coinType: string, env: SuiChainEnviro
   return `${chain}:${coinType}:${env}`;
 }
 
-function normalizeInput(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/** Map common phrases to a config symbol (uppercase). */
 function aliasToConfigSymbol(input: string): string | null {
-  const n = normalizeInput(input);
-  if (n === "sui") return "SUI";
-  if (n === "usd coin" || n === "usdc" || n === "usd-coin") return "USDC";
-  if (n === "deepbook" || n === "deep") return "DEEP";
-  if (n === "walrus" || n === "wal") return "WAL";
-  return null;
-}
-
-/** Normalized symbol phrase for matching wallet rows (e.g. "sui" → "SUI"). */
-export function expandUserTokenAlias(input: string): string {
-  const t = input.trim();
-  if (!t) return t;
-  return aliasToConfigSymbol(t) ?? t;
+  const group = findTokenAliasGroup(input);
+  return group?.canonicalSymbol ?? null;
 }
 
 function chainTokens(chain: SwappableChainId): readonly SwappableTokenConfigEntry[] {
@@ -111,7 +98,7 @@ export function resolveSwappableToken(
     if (t) return t;
   }
 
-  const n = normalizeInput(raw);
+  const n = normalizeTokenInput(raw);
   for (const t of chainTokens(chain)) {
     if (t.symbol.toLowerCase() === n || t.name.toLowerCase() === n) {
       return { ...t };

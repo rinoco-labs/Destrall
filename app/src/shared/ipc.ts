@@ -171,6 +171,9 @@ export type DestrallApi = {
       recipient: string;
       coinType: string;
       amountDisplay: string;
+      walletDecimals?: number;
+      walletBalanceRaw?: string;
+      walletSymbol?: string;
     }) => Promise<RpcResult<TransferPrepareResult>>;
     confirmTransfer: (payload: {
       transferRequestId: string;
@@ -252,6 +255,13 @@ export type DestrallApi = {
       messageId: string;
       disambiguationId: string;
       pickedMatchId: string;
+    }) => Promise<RpcResult<AssistantMessageRow>>;
+    resolveTokenDisambiguation: (payload: {
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      disambiguationId: string;
+      pickedCoinType: string;
     }) => Promise<RpcResult<AssistantMessageRow>>;
   };
   nativeBrowser: {
@@ -412,6 +422,7 @@ export const IPCChannels = {
   assistantChatGetActive: "assistant-chat:get-active",
   assistantChatSetActive: "assistant-chat:set-active",
   assistantChatResolveContactDisambiguation: "assistant-chat:resolve-contact-disambiguation",
+  assistantChatResolveTokenDisambiguation: "assistant-chat:resolve-token-disambiguation",
   nativeBrowserSetViewportBounds: "native-browser:set-viewport-bounds",
   nativeBrowserSetVisible: "native-browser:set-visible",
   nativeBrowserNavigate: "native-browser:navigate",

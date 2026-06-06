@@ -110,6 +110,9 @@ function SendPage() {
         recipient: address.trim(),
         coinType: selected.coinType,
         amountDisplay: amountTrim,
+        walletDecimals: selected.decimals,
+        walletBalanceRaw: selected.balanceRaw,
+        walletSymbol: selected.symbol,
       });
       setPendingRequestId(prep.transferRequestId);
       setPrepareSummary({

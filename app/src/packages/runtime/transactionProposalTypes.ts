@@ -12,4 +12,10 @@ export type SendProposalSnapshot = {
   coinType: string;
   /** Display string passed to prepareTransfer (human-readable amount). */
   amountDisplay: string;
+  /** Token decimals from wallet balance row at prepare time. */
+  decimals: number;
+  /** Raw balance from wallet at prepare time (for address-balance aware validation). */
+  walletBalanceRaw: string;
+  /** Resolved token symbol at prepare time. */
+  symbol: string;
 };

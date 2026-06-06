@@ -119,7 +119,9 @@ function captionForBlocks(
   const head = blocks[0];
   switch (head.type) {
     case "error":
-      return head.message;
+      return "";
+    case "token_disambiguation":
+      return "Pick the token you want to use on the card.";
     case "available_yield_pools":
       return `Found ${head.pools.length} live Navi pools on ${head.network}. Details and APYs are on the card — supply always needs your explicit approval.`;
     case "yield_positions":
@@ -269,7 +271,7 @@ export async function planAssistantStructuredTurn(
         return { mode: "deterministic", blocks, caption: cap };
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Could not build scheduled trigger.";
-        return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: msg };
+        return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: "" };
       }
     }
     return {
@@ -289,7 +291,7 @@ export async function planAssistantStructuredTurn(
       return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not read time.";
-      return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: msg };
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg }], caption: "" };
     }
   }
 
@@ -358,7 +360,7 @@ export async function planAssistantStructuredTurn(
         return { mode: "llm", blocks, systemAddendum: "\n\n[A rebalance plan card is shown. Summarize briefly.]" };
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Rebalance plan failed.";
-        return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+        return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: "" };
       }
     }
   }
@@ -374,7 +376,7 @@ export async function planAssistantStructuredTurn(
       return { mode: "deterministic", blocks, caption: captionForBlocks(blocks, { network: networkLabel, riskProfile }) };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not read address.";
-      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: "" };
     }
   }
 
@@ -396,7 +398,7 @@ export async function planAssistantStructuredTurn(
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not load yield positions.";
-      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: "" };
     }
   }
 
@@ -472,7 +474,7 @@ export async function planAssistantStructuredTurn(
       return { mode: "llm", blocks, systemAddendum: "\n\n[A yield proposal card is shown. One short sentence.]" };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not prepare deposit.";
-      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: "" };
     }
   }
 
@@ -554,7 +556,7 @@ export async function planAssistantStructuredTurn(
       return {
         mode: "deterministic",
         blocks: [{ type: "error", message: msg, code: "action_failed" }],
-        caption: msg,
+        caption: "",
       };
     }
   }
@@ -594,7 +596,7 @@ export async function planAssistantStructuredTurn(
       return { mode: "llm", blocks, systemAddendum: "\n\n[A rebalance plan card is shown. Summarize briefly.]" };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Rebalance plan failed.";
-      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: msg };
+      return { mode: "deterministic", blocks: [{ type: "error", message: msg, code: "action_failed" }], caption: "" };
     }
   }
 

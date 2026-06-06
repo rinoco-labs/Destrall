@@ -38,6 +38,7 @@ export type StructuredCardKind =
   | "navi_deposit_proposal"
   | "navi_withdraw_proposal"
   | "contact_disambiguation"
+  | "token_disambiguation"
   | "composite_swap_then_deposit"
   | "rebalance_proposal"
   | "error"
@@ -61,6 +62,7 @@ export function structuredBlockKind(blockType: string): StructuredCardKind | "ot
     case "navi_deposit_proposal":
     case "navi_withdraw_proposal":
     case "contact_disambiguation":
+    case "token_disambiguation":
     case "composite_swap_then_deposit":
     case "rebalance_proposal":
     case "error":

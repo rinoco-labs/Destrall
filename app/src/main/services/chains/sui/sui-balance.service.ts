@@ -1,21 +1,9 @@
 import type { TokenBalanceView } from "../../../../types/blockchain";
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import { formatTokenAmount } from "../../../../shared/tokens/amounts";
 import { SuiTokenMetadataService } from "./sui-token-metadata.service";
 
-export function formatTokenAmount(raw: bigint, decimals: number): string {
-  if (decimals === 0) return raw.toString();
-  const neg = raw < 0n;
-  const v = neg ? -raw : raw;
-  const base = 10n ** BigInt(decimals);
-  const whole = v / base;
-  const frac = v % base;
-  if (frac === 0n) return `${neg ? "-" : ""}${whole}`;
-  const fracStr = frac
-    .toString()
-    .padStart(decimals, "0")
-    .replace(/0+$/, "");
-  return `${neg ? "-" : ""}${whole}.${fracStr}`;
-}
+export { formatTokenAmount } from "../../../../shared/tokens/amounts";
 
 export async function fetchSuiBalancesForAddress(
   client: SuiJsonRpcClient,

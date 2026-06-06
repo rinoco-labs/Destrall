@@ -146,9 +146,7 @@ export function registerChainIpcHandlers() {
     }
     try {
       return ok(
-        await chainFacadeService.prepareTransfer(
-          parsed.data as { accountId: string; recipient: string; coinType: string; amountDisplay: string },
-        ),
+        await chainFacadeService.prepareTransfer(parsed.data),
       );
     } catch (error) {
       return fail(error);

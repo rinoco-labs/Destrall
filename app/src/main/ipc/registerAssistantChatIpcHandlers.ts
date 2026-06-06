@@ -5,6 +5,7 @@ import type { RpcResult } from "../../shared/ipc";
 import { IPCChannels } from "../../shared/ipc";
 import { chatHistoryService } from "../services/assistant/chatHistoryService";
 import { resolveAssistantContactDisambiguation } from "../services/assistant/assistantContactDisambiguationService";
+import { resolveAssistantTokenDisambiguation } from "../services/assistant/assistantTokenDisambiguationService";
 
 function ok<T>(data: T): RpcResult<T> {
   return { ok: true, data };
@@ -205,6 +206,30 @@ export function registerAssistantChatIpcHandlers() {
         messageId: parsed.messageId,
         disambiguationId: parsed.disambiguationId,
         pickedMatchId: parsed.pickedMatchId,
+      });
+      return ok(row as AssistantMessageRow);
+    } catch (error) {
+      return fail(error);
+    }
+  });
+
+  const resolveTokenDisambiguationSchema = z.object({
+    accountId: z.string().min(1),
+    chatId: z.string().min(1),
+    messageId: z.string().min(1),
+    disambiguationId: z.string().min(1),
+    pickedCoinType: z.string().min(3),
+  });
+
+  ipcMain.handle(IPCChannels.assistantChatResolveTokenDisambiguation, async (_e, payload: unknown) => {
+    try {
+      const parsed = resolveTokenDisambiguationSchema.parse(payload);
+      const row = await resolveAssistantTokenDisambiguation({
+        accountId: parsed.accountId,
+        chatId: parsed.chatId,
+        messageId: parsed.messageId,
+        disambiguationId: parsed.disambiguationId,
+        pickedCoinType: parsed.pickedCoinType,
       });
       return ok(row as AssistantMessageRow);
     } catch (error) {

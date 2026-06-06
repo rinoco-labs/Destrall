@@ -4,6 +4,7 @@ import type {
   AssistantStructuredResult,
   CompositeSwapThenDepositResult,
   ContactDisambiguationResult,
+  TokenDisambiguationResult,
   RebalanceProposalResult,
   SendProposalResult,
   SwapProposalResult,
@@ -40,6 +41,7 @@ import { useNetworkStore } from "@/stores/networkStore";
 import {
   desktopAssistantChatAddMessage,
   desktopAssistantResolveContactDisambiguation,
+  desktopAssistantResolveTokenDisambiguation,
 } from "@/lib/desktopAssistantChat";
 import { PendingProposalCriticalFlows } from "@/components/PendingProposalCriticalFlows";
 import { Button } from "@/components/ui/button";
@@ -436,6 +438,9 @@ export function AssistantStructuredMessageRenderer({
             recipient: snap.recipientAddress,
             coinType: snap.coinType,
             amountDisplay: snap.amountDisplay,
+            walletDecimals: snap.decimals,
+            walletBalanceRaw: snap.walletBalanceRaw,
+            walletSymbol: snap.symbol,
           });
           transferRequestId = prep.transferRequestId;
         }
@@ -561,6 +566,73 @@ export function AssistantStructuredMessageRenderer({
           />
         </Fragment>
       ))}
+    </div>
+  );
+}
+
+function TokenDisambiguationCard({
+  accountId,
+  chatId,
+  messageId,
+  block,
+  onReloadThread,
+}: {
+  accountId: string;
+  chatId: string;
+  messageId: string;
+  block: TokenDisambiguationResult;
+  onReloadThread: () => Promise<void>;
+}) {
+  const [busyType, setBusyType] = useState<string | null>(null);
+  const pick = async (pickedCoinType: string) => {
+    setBusyType(pickedCoinType);
+    try {
+      await desktopAssistantResolveTokenDisambiguation({
+        accountId,
+        chatId,
+        messageId,
+        disambiguationId: block.disambiguationId,
+        pickedCoinType,
+      });
+      await onReloadThread();
+    } finally {
+      setBusyType(null);
+    }
+  };
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full max-w-md rounded-2xl border border-sky-500/40 bg-card/60 p-4 space-y-3">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.18em] text-sky-600 uppercase">Choose token</p>
+          <p className="text-sm font-semibold">Multiple matches for “{block.userInput}”</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pick the token you want to use. Balances are from your connected wallet.
+          </p>
+        </div>
+        <ul className="space-y-2">
+          {block.matches.map((m) => (
+            <li key={m.coinType}>
+              <button
+                type="button"
+                disabled={busyType != null}
+                onClick={() => void pick(m.coinType)}
+                className="w-full flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/50 px-3 py-2.5 text-left text-sm hover:bg-background/80 transition disabled:opacity-60"
+              >
+                <span className="font-semibold truncate">
+                  {m.symbol} · {m.balanceFormatted}
+                </span>
+                <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[45%]">
+                  {m.coinType.slice(0, 12)}…
+                </span>
+                {busyType === m.coinType ? (
+                  <Loader2 className="w-4 h-4 shrink-0 animate-spin text-brand" />
+                ) : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -775,6 +847,16 @@ function StructuredBlockView({
     case "contact_disambiguation":
       return (
         <ContactDisambiguationCard
+          accountId={accountId}
+          chatId={chatId}
+          messageId={messageId}
+          block={block}
+          onReloadThread={onReloadThread}
+        />
+      );
+    case "token_disambiguation":
+      return (
+        <TokenDisambiguationCard
           accountId={accountId}
           chatId={chatId}
           messageId={messageId}
