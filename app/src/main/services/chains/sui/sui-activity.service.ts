@@ -3,7 +3,7 @@ import type { SuiChainEnvironment } from "../../../../config/chains/sui";
 import type { ChainActivityItem, ChainActivityPage } from "../../../../types/blockchain";
 import { SuiTokenMetadataService } from "./sui-token-metadata.service";
 import { getTransactionExplorerUrl } from "./sui-explorer.service";
-import { formatTokenAmount } from "./sui-balance.service";
+import { formatTokenAmount } from "../../../../shared/tokens/amounts";
 
 function ownerToAddress(owner: unknown): string | null {
   if (owner && typeof owner === "object" && "AddressOwner" in owner) {

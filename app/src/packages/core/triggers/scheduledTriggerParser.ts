@@ -71,7 +71,7 @@ function buildScheduledSwapDraft(
     schedule: sched.schedule,
     scheduleDisplay: sched.displayLabel,
     maxExecutions: sched.isRecurring ? 9999 : 1,
-    slippageBps: 50,
+    slippageBps: 100,
   };
 
   return { ok: true, draft };

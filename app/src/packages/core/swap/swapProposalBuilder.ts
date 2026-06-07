@@ -2,6 +2,7 @@ import type { AssistantProposalCard } from "../../../assistant/assistantResultTy
 import type { SwapProposalSnapshotV1 } from "./swap.types";
 import type { AftermathTradeRoute } from "../../../main/services/chains/sui/aftermath-router-api";
 import { serializeAftermathRoute } from "../../../main/services/chains/sui/sui-aftermath-swap.service";
+import { formatSlippageBpsForDisplay } from "../../../shared/swap/slippage";
 
 function formatAppFeeLine(appFeeBps: number, treasury?: string): string {
   const pct = appFeeBps / 100;
@@ -59,6 +60,7 @@ export function buildSwapProposalAssistantCard(params: {
   appFeeBps: number;
   treasuryAddress?: string;
   gasBudgetFormatted: string;
+  quoteExpiresAtMs?: number;
   riskWarnings: string[];
 }): AssistantProposalCard {
   const noteLines = [
@@ -93,9 +95,20 @@ export function buildSwapProposalAssistantCard(params: {
       { k: "Price impact / fees", v: params.priceImpactLabel },
       { k: "Route", v: params.routeSummary },
       { k: "Network", v: params.networkLabel },
-      { k: "Slippage tolerance", v: `${(params.slippageBps / 100).toFixed(2)}%` },
+      { k: "Slippage tolerance", v: formatSlippageBpsForDisplay(params.slippageBps) },
       { k: "App fee", v: formatAppFeeLine(params.appFeeBps, params.treasuryAddress) },
       { k: "Estimated gas", v: `~${params.gasBudgetFormatted} SUI` },
+      ...(params.quoteExpiresAtMs
+        ? [
+            {
+              k: "Quote expires",
+              v: new Date(params.quoteExpiresAtMs).toLocaleTimeString(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+            },
+          ]
+        : []),
     ],
     note: noteLines.join(" "),
   };

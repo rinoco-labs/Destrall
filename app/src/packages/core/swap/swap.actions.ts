@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { AssistantStructuredResult } from "../../../assistant/assistantResultTypes";
 import type { ActionContext } from "../../runtime/actionContext";
 import { validateChainFeeConfig, getChainTreasuryAddress, getSwapFeeBps } from "../../../config/destrall.config";
-import { formatTokenAmount } from "../../../main/services/chains/sui/sui-balance.service";
+import { formatTokenAmount, logTokenAmountConversion, TokenAmountError } from "../../../shared/tokens/amounts";
+import {
+  DEFAULT_SLIPPAGE_BPS,
+  resolveSwapSlippageBps,
+  SlippageError,
+} from "../../../shared/swap/slippage";
+import { isAftermathSlippageError } from "../../../main/services/chains/sui/aftermath-router-api";
 import { suiAftermathSwapService } from "../../../main/services/chains/sui/sui-aftermath-swap.service";
 import { normalizeSuiCoinType } from "../../../main/services/chains/sui/sui-coin-type-normalize";
 import { fetchAftermathSupportedCoinTypes } from "./aftermath-router.service";
@@ -18,8 +24,6 @@ import {
 import { buildSwapProposalAssistantCard, buildSwapProposalSnapshot } from "./swapProposalBuilder";
 import { assertSwapSpendWithinBalance, resolveSpendTokenFromWallet } from "./swapTokenResolver";
 import type { SwappableTokenView } from "./swap.types";
-
-const DEFAULT_SLIPPAGE_BPS = 50;
 
 export async function listSwappableTokensAction(
   input: Record<string, unknown>,
@@ -182,7 +186,16 @@ export async function prepareSwapAction(
     ];
   }
 
-  const slippageBps = parsed.data.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  let slippageBps: number;
+  try {
+    slippageBps = resolveSwapSlippageBps(parsed.data.slippageBps ?? DEFAULT_SLIPPAGE_BPS);
+  } catch (e) {
+    const msg =
+      e instanceof SlippageError
+        ? e.message
+        : "Invalid slippage. Use basis points (100 = 1%, minimum 10 bps).";
+    return [{ type: "error", message: msg, code: "invalid_slippage" }];
+  }
 
   const feeOk = validateChainFeeConfig("sui");
   const treasury = feeOk ? getChainTreasuryAddress("sui") : undefined;
@@ -197,6 +210,20 @@ export async function prepareSwapAction(
     riskWarnings.push("Slippage is set higher than usual; you may receive less than quoted.");
   }
 
+  if (spendOk.ok) {
+    logTokenAmountConversion({
+      context: "assistant-swap",
+      tokenInput: parsed.data.fromToken,
+      resolvedSymbol: fromPick.balance.symbol,
+      coinType: fromPick.balance.coinType,
+      decimals: fromPick.balance.decimals,
+      humanAmount: parsed.data.amount,
+      rawAmount: spendOk.amountRaw.toString(),
+      balanceRaw: fromPick.balance.balanceRaw,
+      validation: "prepared",
+    });
+  }
+
   try {
     const quote = await suiAftermathSwapService.prepareSwapQuote({
       env: net.environment,
@@ -209,6 +236,7 @@ export async function prepareSwapAction(
       toSymbol: enrichedTo.symbol,
       slippageBps,
       externalFee,
+      walletBalanceRaw: fromPick.balance.balanceRaw,
     });
 
     const inputAmountFormatted = formatTokenAmount(quote.coinInAmountRaw, fromPick.balance.decimals);
@@ -244,6 +272,7 @@ export async function prepareSwapAction(
       appFeeBps,
       treasuryAddress: externalFee?.recipient,
       gasBudgetFormatted: quote.gasBudgetFormatted,
+      quoteExpiresAtMs: quote.quoteExpiresAtMs,
       riskWarnings,
     });
 
@@ -258,7 +287,38 @@ export async function prepareSwapAction(
       },
     ];
   } catch (e) {
+    if (e instanceof SlippageError) {
+      return [{ type: "error", message: e.message, code: "invalid_slippage" }];
+    }
+    if (e instanceof TokenAmountError) {
+      const code =
+        e.code === "decimals_unresolved"
+          ? "decimals_unresolved"
+          : e.code === "too_many_decimals"
+            ? "invalid_amount"
+            : "invalid_amount";
+      return [{ type: "error", message: e.message, code }];
+    }
     const msg = e instanceof Error ? e.message : "Could not prepare swap.";
+    if (isAftermathSlippageError(msg)) {
+      return [
+        {
+          type: "error",
+          message:
+            "The swap failed because the slippage value was invalid. Using the default 1% tolerance — please try again.",
+          code: "invalid_slippage",
+        },
+      ];
+    }
+    if (/Insufficient SUI for gas/i.test(msg)) {
+      return [
+        {
+          type: "error",
+          message: "You need a small amount of SUI in your wallet to pay gas for this swap.",
+          code: "insufficient_gas",
+        },
+      ];
+    }
     if (/Insufficient/i.test(msg)) {
       return [{ type: "error", message: `You do not have enough ${fromPick.balance.symbol} to swap.`, code: "insufficient_funds" }];
     }

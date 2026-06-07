@@ -9,6 +9,10 @@ import type {
 } from "./triggers.types";
 import { categoryLabel } from "./triggerParser";
 import {
+  DEFAULT_SLIPPAGE_BPS,
+  formatSlippageBpsForDisplay,
+} from "../../../shared/swap/slippage";
+import {
   formatCountdown,
   formatLocalTime,
   formatScheduleDisplay,
@@ -102,7 +106,7 @@ export function buildApprovalPreview(
   if (!account) return null;
 
   const maxExec = draft.maxExecutions ?? (draft.type === "price" ? 1 : 9999);
-  const slippage = draft.slippageBps ?? 50;
+  const slippage = draft.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
 
   if (draft.action.type === "swap") {
     return {
@@ -249,7 +253,7 @@ export async function buildTriggerProposal(params: {
     { k: "Account", v: `${account.name} (${shortAddr})` },
     { k: "Network", v: networkLabel },
     { k: "Max executions", v: String(maxExec) },
-    { k: "Slippage cap", v: `${approvalPreview.maxSlippageBps} bps` },
+    { k: "Slippage cap", v: formatSlippageBpsForDisplay(approvalPreview.maxSlippageBps) },
   ];
   if (priceSourceLabel) {
     details.splice(2, 0, { k: "Price source", v: priceSourceLabel });

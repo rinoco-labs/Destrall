@@ -19,6 +19,7 @@ export const swappableTokensConfig = {
           "0xdeeb7a4662eec9f2f3def03fb937a663dddaa2e215b8078a284d026b7946c270::deep::DEEP",
         coinType:
           "0xdeeb7a4662eec9f2f3def03fb937a663dddaa2e215b8078a284d026b7946c270::deep::DEEP",
+        decimals: 6,
       },
       {
         symbol: "USDC",
@@ -36,6 +37,7 @@ export const swappableTokensConfig = {
           "0x356a26eb9e012a68958082340d4c4116e7f55615cf27affcff209cf0ae544f59::wal::WAL",
         coinType:
           "0x356a26eb9e012a68958082340d4c4116e7f55615cf27affcff209cf0ae544f59::wal::WAL",
+        decimals: 9,
       },
     ],
   },

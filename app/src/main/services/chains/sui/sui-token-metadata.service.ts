@@ -1,5 +1,6 @@
 import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { SUI_COIN_TYPE } from "../../../../config/chains/sui";
+import { decimalsResolutionFailedMessage } from "../../../../shared/tokens/amounts";
 import { getSwappableTokenByAddress } from "../../../../services/tokens/swappableTokenRegistry";
 import { getNormalizedSuiCoinType, normalizeSuiCoinType } from "./sui-coin-type-normalize";
 
@@ -9,6 +10,16 @@ export type CoinMetadataRow = {
   name: string;
   iconUrl?: string | null;
 };
+
+export class CoinMetadataError extends Error {
+  readonly coinType: string;
+
+  constructor(coinType: string, message?: string) {
+    super(message ?? decimalsResolutionFailedMessage());
+    this.name = "CoinMetadataError";
+    this.coinType = coinType;
+  }
+}
 
 const cache = new Map<string, CoinMetadataRow>();
 
@@ -31,16 +42,19 @@ function registryDecimals(coinType: string): number | undefined {
   return undefined;
 }
 
-function guessFromCoinType(coinType: string): CoinMetadataRow {
+function symbolFromCoinType(coinType: string): string {
   const parts = coinType.split("::");
   const tail = parts[parts.length - 1] ?? coinType;
+  return tail.slice(0, 12);
+}
+
+function resolveDecimalsOrThrow(coinType: string, rpcDecimals?: number): number {
+  if (typeof rpcDecimals === "number" && Number.isFinite(rpcDecimals) && rpcDecimals > 0) {
+    return rpcDecimals;
+  }
   const fromRegistry = registryDecimals(coinType);
-  return {
-    symbol: tail.slice(0, 12),
-    decimals: fromRegistry ?? 9,
-    name: tail,
-    iconUrl: null,
-  };
+  if (fromRegistry !== undefined) return fromRegistry;
+  throw new CoinMetadataError(coinType);
 }
 
 function storeCached(coinType: string, row: CoinMetadataRow): CoinMetadataRow {
@@ -68,23 +82,22 @@ export class SuiTokenMetadataService {
     }
 
     const client = this.getClient();
+    let lastError: unknown;
     for (const variant of coinTypeLookupVariants(coinType)) {
       try {
         const meta = await client.getCoinMetadata({ coinType: variant });
         if (meta) {
-          const registry = registryDecimals(variant);
-          const decimals =
-            typeof meta.decimals === "number" && meta.decimals > 0
-              ? meta.decimals
-              : (registry ?? guessFromCoinType(variant).decimals);
+          const decimals = resolveDecimalsOrThrow(variant, meta.decimals);
           return storeCached(coinType, {
-            symbol: meta.symbol ?? guessFromCoinType(variant).symbol,
+            symbol: meta.symbol ?? symbolFromCoinType(variant),
             decimals,
             name: meta.name ?? meta.symbol ?? variant,
             iconUrl: meta.iconUrl ?? null,
           });
         }
       } catch (err) {
+        if (err instanceof CoinMetadataError) throw err;
+        lastError = err;
         console.warn(
           "[sui] getCoinMetadata failed (sanitized)",
           variant,
@@ -93,7 +106,17 @@ export class SuiTokenMetadataService {
       }
     }
 
-    return storeCached(coinType, guessFromCoinType(coinType));
+    const fromRegistry = registryDecimals(coinType);
+    if (fromRegistry !== undefined) {
+      return storeCached(coinType, {
+        symbol: symbolFromCoinType(coinType),
+        decimals: fromRegistry,
+        name: symbolFromCoinType(coinType),
+        iconUrl: null,
+      });
+    }
+
+    throw new CoinMetadataError(coinType, lastError instanceof Error ? lastError.message : undefined);
   }
 
   peekCached(coinType: string): CoinMetadataRow | undefined {

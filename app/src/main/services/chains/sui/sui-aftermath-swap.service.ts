@@ -4,8 +4,8 @@ import type { TransactionBuildContext } from "../../../../services/transactions/
 import { mergeProgrammableTransaction } from "../../../../services/transactions/ptbMerge";
 import { setAlias } from "../../../../services/transactions/transactionContext";
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
-import { decimalStringToRawAmount } from "../amount-utils";
-import { formatTokenAmount } from "./sui-balance.service";
+import { formatTokenAmount, logTokenAmountConversion, parseTokenAmount } from "../../../../shared/tokens/amounts";
+import { logAftermathSlippage, toAftermathSlippage } from "../../../../shared/swap/slippage";
 import { getSuiClientForEnvironment } from "./sui-client.service";
 import { SuiTokenMetadataService } from "./sui-token-metadata.service";
 import { getTransactionExplorerUrl } from "./sui-explorer.service";
@@ -20,6 +20,7 @@ import {
   aftermathRouterRequest,
 } from "./aftermath-router-api";
 import { isNormalizedSuiNativeCoin, normalizeSuiCoinType } from "./sui-coin-type-normalize";
+import { resolveOnChainCoinType } from "./sui-coin-type-resolve";
 
 const BIGINT_MARK = "__bigint:";
 
@@ -50,27 +51,19 @@ export function deserializeAftermathRoute(json: string): AftermathTradeRoute {
   }) as AftermathTradeRoute;
 }
 
-async function fetchAllCoinObjects(client: SuiJsonRpcClient, owner: string, coinType: string) {
-  const out: { coinObjectId: string; balance: string }[] = [];
-  let cursor: string | null | undefined;
-  do {
-    const page = await client.getCoins({ owner, coinType, cursor: cursor ?? undefined });
-    out.push(...page.data.map((c) => ({ coinObjectId: c.coinObjectId, balance: c.balance })));
-    cursor = page.hasNextPage ? page.nextCursor : null;
-  } while (cursor);
-  return out;
-}
-
 async function ensureSpendableBalance(params: {
   client: SuiJsonRpcClient;
   address: string;
   coinType: string;
   amount: bigint;
+  /** Wallet balance raw from the same row used to prepare the swap (avoids coin-type string mismatches). */
+  walletBalanceRaw?: string;
 }) {
   const gasHeadroom = 80_000_000n;
   const suiBal = await params.client.getBalance({ owner: params.address });
   const suiTotal = BigInt(suiBal.totalBalance);
-  if (isNormalizedSuiNativeCoin(params.coinType)) {
+  const normalized = normalizeSuiCoinType(params.coinType);
+  if (isNormalizedSuiNativeCoin(normalized)) {
     if (suiTotal < params.amount + gasHeadroom) {
       throw new Error("Insufficient balance.");
     }
@@ -79,11 +72,16 @@ async function ensureSpendableBalance(params: {
   if (suiTotal < gasHeadroom) {
     throw new Error("Insufficient SUI for gas.");
   }
-  const coins = await fetchAllCoinObjects(params.client, params.address, params.coinType);
-  let total = 0n;
-  for (const c of coins) {
-    total += BigInt(c.balance);
-  }
+
+  const resolved = await resolveOnChainCoinType(
+    params.client,
+    params.address,
+    params.coinType,
+    params.walletBalanceRaw,
+  );
+  const total =
+    params.walletBalanceRaw != null ? BigInt(params.walletBalanceRaw) : resolved.totalBalance;
+
   if (total < params.amount) {
     throw new Error("Insufficient balance.");
   }
@@ -170,10 +168,15 @@ export async function appendAftermathSwapToTransaction(
   },
 ): Promise<TransactionObjectArgument> {
   const client = getSuiClientForEnvironment(ctx.suiEnvironment);
-  const slippage = params.slippageBps / 10_000;
-  console.info("[swap] building trade tx for PTB merge", {
+  const slippage = toAftermathSlippage(params.slippageBps);
+  logAftermathSlippage("transactions/trade (PTB merge)", {
+    slippage,
     slippageBps: params.slippageBps,
-    wallet: ctx.senderAddress.slice(0, 10),
+    coinInType: params.completeRoute.coinIn?.type,
+    coinOutType: params.completeRoute.coinOut?.type,
+    coinInAmountRaw: String(params.completeRoute.coinIn?.amount ?? ""),
+    coinOutAmountRaw: String(params.completeRoute.coinOut?.amount ?? ""),
+    walletAddress: ctx.senderAddress,
   });
 
   const txBuildResult = await aftermathRouterRequest<unknown>({
@@ -260,6 +263,7 @@ export class SuiAftermathSwapService {
     toSymbol: string;
     slippageBps: number;
     externalFee?: { recipient: string; feePercentage: number };
+    walletBalanceRaw?: string;
   }): Promise<{
     route: AftermathTradeRoute;
     coinInAmountRaw: bigint;
@@ -282,10 +286,26 @@ export class SuiAftermathSwapService {
       client,
       address: params.walletAddress,
       coinType: coinInType,
-      amount: decimalStringToRawAmount(params.amountDisplay.trim(), params.coinInDecimals),
+      amount: parseTokenAmount(params.amountDisplay.trim(), params.coinInDecimals, params.fromSymbol),
+      walletBalanceRaw: params.walletBalanceRaw,
     });
 
-    const coinInAmountRaw = decimalStringToRawAmount(params.amountDisplay.trim(), params.coinInDecimals);
+    const coinInAmountRaw = parseTokenAmount(
+      params.amountDisplay.trim(),
+      params.coinInDecimals,
+      params.fromSymbol,
+    );
+
+    logTokenAmountConversion({
+      context: "swap-quote",
+      resolvedSymbol: params.fromSymbol,
+      coinType: coinInType,
+      decimals: params.coinInDecimals,
+      humanAmount: params.amountDisplay.trim(),
+      rawAmount: coinInAmountRaw.toString(),
+      balanceRaw: params.walletBalanceRaw,
+      validation: "prepared",
+    });
 
     const routeBody: Record<string, unknown> = {
       coinInType,
@@ -304,7 +324,16 @@ export class SuiAftermathSwapService {
 
     const estimatedOutRaw = amountFromRouteField(route.coinOut?.amount);
 
-    const slippage = params.slippageBps / 10_000;
+    const slippage = toAftermathSlippage(params.slippageBps);
+    logAftermathSlippage("transactions/trade (quote)", {
+      slippage,
+      slippageBps: params.slippageBps,
+      coinInType,
+      coinOutType,
+      coinInAmountRaw: coinInAmountRaw.toString(),
+      coinOutAmountRaw: estimatedOutRaw.toString(),
+      walletAddress: params.walletAddress,
+    });
 
     const txBuildResult = await aftermathRouterRequest<unknown>({
       env: params.env,
@@ -385,7 +414,16 @@ export class SuiAftermathSwapService {
     });
 
     const completeRoute = deserializeAftermathRoute(snapshot.completeRouteJson);
-    const slippage = snapshot.slippageBps / 10_000;
+    const slippage = toAftermathSlippage(snapshot.slippageBps);
+    logAftermathSlippage("transactions/trade (execute)", {
+      slippage,
+      slippageBps: snapshot.slippageBps,
+      coinInType: completeRoute.coinIn?.type,
+      coinOutType: completeRoute.coinOut?.type,
+      coinInAmountRaw: snapshot.coinInAmountRaw,
+      coinOutAmountRaw: snapshot.estimatedOutRaw,
+      walletAddress: snapshot.walletAddress,
+    });
 
     const txBuildResult = await aftermathRouterRequest<unknown>({
       env,

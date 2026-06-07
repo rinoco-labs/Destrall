@@ -1,5 +1,4 @@
 import type { TokenBalanceView } from "../../../types/blockchain";
-import { decimalStringToRawAmount } from "../../../main/services/chains/amount-utils";
 import { resolveWalletToken } from "../../../services/tokens/walletTokenResolver";
 import { validateSpendAmount } from "../../../services/tokens/balanceValidation";
 

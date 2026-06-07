@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AssistantStructuredResult } from "../../../assistant/assistantResultTypes";
 import type { ActionContext } from "../actionContext";
-import { decimalStringToRawAmount } from "../../../main/services/chains/amount-utils";
-import { formatTokenAmount } from "../../../main/services/chains/sui/sui-balance.service";
+import { formatTokenAmount, parseTokenAmount } from "../../../shared/tokens/amounts";
 import { fetchNaviPools } from "../../core/yield/navi/navi-pools.service";
 import { resolveNaviPoolByAsset } from "../../../services/tokens/naviTokenResolver";
 import { resolveWalletToken } from "../../../services/tokens/walletTokenResolver";
@@ -105,7 +104,7 @@ export async function buildSwapThenDepositPlan(
     }
     swapAmountDisplay = formatTokenAmount(amountRaw, spendBal.decimals);
   } else {
-    const raw = decimalStringToRawAmount(params.amount.trim(), spendBal.decimals);
+    const raw = parseTokenAmount(params.amount.trim(), spendBal.decimals, spendBal.symbol);
     if (raw <= 0n) {
       return [{ type: "error", message: "Invalid swap amount.", code: "invalid_amount" }];
     }

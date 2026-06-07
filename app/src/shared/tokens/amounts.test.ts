@@ -72,6 +72,14 @@ describe("getTokenDecimalsFromBalance", () => {
   });
 });
 
+describe("registry decimals (source of truth)", () => {
+  it("USDC registry entry specifies 6 decimals", async () => {
+    const { swappableTokensConfig } = await import("../../config/swappableTokens.config.ts");
+    const usdc = swappableTokensConfig.sui.tokens.find((t) => t.symbol === "USDC");
+    assert.equal(usdc?.decimals, 6);
+  });
+});
+
 describe("tokenAliases", () => {
   it("maps usdc, USDC, and nUSDC to the USDC group", () => {
     assert.equal(expandUserTokenAlias("usdc"), "USDC");

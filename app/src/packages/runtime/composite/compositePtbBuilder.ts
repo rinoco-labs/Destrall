@@ -15,6 +15,7 @@ import {
 } from "../../../services/transactions/transactionContext";
 import { deserializeExecutionPlan } from "./compositeExecutionPlan";
 import type { CompositeProposalSnapshotV1 } from "./compositeTypes";
+import { toAftermathSlippage } from "../../../shared/swap/slippage";
 
 export async function buildCompositePtbBytes(snapshot: CompositeProposalSnapshotV1): Promise<Uint8Array> {
   const plan = deserializeExecutionPlan(snapshot.planJson);
@@ -57,6 +58,7 @@ async function appendSwapStep(
   outputAlias: string,
 ): Promise<void> {
   const route = deserializeAftermathRoute(snap.completeRouteJson);
+  toAftermathSlippage(snap.slippageBps);
   console.info("[swap] quote in", snap.coinInAmountRaw, "est out", snap.estimatedOutRaw);
   await appendAftermathSwapToTransaction(ctx, {
     completeRoute: route,

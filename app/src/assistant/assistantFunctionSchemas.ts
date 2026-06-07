@@ -98,7 +98,8 @@ export const prepareSwapFunctionSchema = {
       },
       slippageBps: {
         type: "number",
-        description: "Optional max slippage in basis points (e.g. 50 = 0.5%).",
+        description:
+          "Optional max slippage in basis points only. 100 = 1%, 50 = 0.5%. Never pass 1 for 1% — use 100.",
       },
     },
     required: ["fromToken", "toToken", "amount"],

@@ -1,4 +1,9 @@
 import type { SuiChainEnvironment } from "../../../../config/chains/sui";
+import { formatSlippageForDisplay } from "../../../../shared/swap/slippage";
+
+export function isAftermathSlippageError(errText: string): boolean {
+  return /Error\s+2010/i.test(errText) || /Invalid slippage/i.test(errText);
+}
 
 /**
  * Aftermath Smart Order Router REST shape (subset used by Destrall).
@@ -62,6 +67,16 @@ export async function aftermathRouterRequest<T>(params: {
 
   if (!response.ok) {
     const errText = await response.text();
+    if (isAftermathSlippageError(errText) && params.body && typeof params.body === "object") {
+      const body = params.body as Record<string, unknown>;
+      const slippage = body.slippage;
+      console.warn("[aftermath] slippage rejected by router", {
+        path: params.path,
+        slippage,
+        slippageDisplay:
+          typeof slippage === "number" ? formatSlippageForDisplay(slippage) : undefined,
+      });
+    }
     throw new Error(
       `HTTP ${response.status} ${response.statusText}${errText ? `: ${errText}` : ""}`,
     );

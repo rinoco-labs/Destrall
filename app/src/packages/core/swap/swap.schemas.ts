@@ -14,7 +14,7 @@ export const swapProposalSnapshotV1Schema = z.object({
   amountDisplay: z.string().min(1).max(64),
   coinInAmountRaw: z.string().regex(/^\d+$/),
   estimatedOutRaw: z.string().regex(/^\d+$/),
-  slippageBps: z.number().int().min(1).max(5000),
+  slippageBps: z.number().int().min(10).max(500),
   appFeeBps: z.number().int().min(0).max(10_000),
   treasuryAddress: z.string().min(1).max(256).optional(),
   quoteExpiresAtMs: z.number().int(),
@@ -33,8 +33,8 @@ export const prepareSwapInputSchema = z.object({
   slippageBps: z
     .number()
     .int()
-    .min(1)
-    .max(5_000)
+    .min(10, "Slippage must be at least 10 bps (0.1%).")
+    .max(500, "Slippage cannot exceed 500 bps (5%).")
     .optional(),
 });
 

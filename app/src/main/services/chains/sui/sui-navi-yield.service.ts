@@ -2,7 +2,7 @@ import type { NaviPoolRow, NaviYieldProposalSnapshotV1 } from "../../../../packa
 import { fetchNaviPools, resolvePoolByAssetSymbol } from "../../../../packages/core/yield/navi/navi-pools.service";
 import { buildNaviDepositTransactionBytes, buildNaviWithdrawTransactionBytes } from "../../../../packages/core/yield/navi/navi-transaction-builder";
 import { fetchNaviPositionsOnChain } from "../../../../packages/core/yield/navi/navi-positions.service";
-import { decimalStringToRawAmount } from "../amount-utils";
+import { parseTokenAmount } from "../../../../shared/tokens/amounts";
 import { getSuiClientForEnvironment } from "./sui-client.service";
 import { networkSettingsService } from "../../network/networkSettingsService";
 import { walletService } from "../../../wallet/walletService";
@@ -70,7 +70,7 @@ export class SuiNaviYieldService {
         throw new Error("No Navi position found for this asset anymore.");
       }
       const maxDisplay = humanPositionToAmountDisplay(pos.supplyBalanceHuman, snap.decimals);
-      const maxRaw = decimalStringToRawAmount(maxDisplay, snap.decimals);
+      const maxRaw = parseTokenAmount(maxDisplay, snap.decimals, snap.assetSymbol);
       if (amountRaw > maxRaw) {
         throw new Error("Withdraw amount exceeds your current position.");
       }

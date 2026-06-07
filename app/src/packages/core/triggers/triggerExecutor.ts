@@ -16,6 +16,11 @@ import type {
   TriggerTimeSchedule,
 } from "./triggers.types";
 import { defaultNextCheckAtIso } from "../../../services/time/timeService";
+import {
+  DEFAULT_SLIPPAGE_BPS,
+  SlippageError,
+  toAftermathSlippage,
+} from "../../../shared/swap/slippage";
 
 export type TriggerExecutionOutcome = {
   status: "success" | "failed" | "skipped";
@@ -57,7 +62,7 @@ function withinApproval(
     if (action.toToken.toUpperCase() !== approval.tokenOut.toUpperCase()) {
       return "tokenOut not approved";
     }
-    const slip = action.slippageBps ?? 50;
+    const slip = action.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
     if (slip > approval.maxSlippageBps) {
       return "Slippage exceeds approved cap";
     }
@@ -71,12 +76,20 @@ async function executeSwapTrigger(
   ctx: ActionContext,
   approval: TriggerApprovalLimits,
 ): Promise<TriggerExecutionOutcome> {
+  const slippageBps = Math.min(action.slippageBps ?? approval.maxSlippageBps, approval.maxSlippageBps);
+  try {
+    toAftermathSlippage(slippageBps);
+  } catch (e) {
+    const msg = e instanceof SlippageError ? e.message : "Invalid slippage for trigger execution.";
+    return { status: "skipped", error: msg };
+  }
+
   const blocks = await prepareSwapAction(
     {
       fromToken: action.fromToken,
       toToken: action.toToken,
       amount: action.amount,
-      slippageBps: Math.min(action.slippageBps ?? approval.maxSlippageBps, approval.maxSlippageBps),
+      slippageBps,
     },
     ctx,
   );

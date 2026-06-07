@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AssistantStructuredResult } from "../../../../assistant/assistantResultTypes";
 import type { ActionContext } from "../../../runtime/actionContext";
-import { decimalStringToRawAmount } from "../../../../main/services/chains/amount-utils";
-import { formatTokenAmount } from "../../../../main/services/chains/sui/sui-balance.service";
+import { formatTokenAmount, parseTokenAmount, TokenAmountError } from "../../../../shared/tokens/amounts";
 import { getSuiClientForEnvironment } from "../../../../main/services/chains/sui/sui-client.service";
 import {
   isNormalizedSuiNativeCoin,
@@ -246,18 +245,16 @@ export async function prepareYieldDepositAction(
     }
     amountDisplay = formatTokenAmount(amountRaw, bal.decimals);
   } else {
-    amountRaw = decimalStringToRawAmount(parsed.data.amount.trim(), bal.decimals);
-  }
-
-  if (!isNormalizedSuiNativeCoin(pool.coinType)) {
     const spendCheck = validateSpendAmount({
-      amountDisplay: amountDisplay,
+      amountDisplay: parsed.data.amount.trim(),
       balance: bal,
       actionLabel: "This deposit",
     });
     if (!spendCheck.ok) {
       return [{ type: "error", message: spendCheck.message, code: spendCheck.code }];
     }
+    amountRaw = spendCheck.amountRaw;
+    amountDisplay = parsed.data.amount.trim();
   }
 
   if (isNormalizedSuiNativeCoin(pool.coinType)) {
@@ -399,33 +396,42 @@ export async function prepareYieldWithdrawAction(
   let amountDisplay: string;
   let amountRaw: bigint;
 
-  if (amountKind === "all") {
-    amountDisplay = humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals);
-    amountRaw = decimalStringToRawAmount(amountDisplay, pos.decimals);
-  } else if (amountKind === "percentage") {
-    const pctStr = (parsed.data.amount ?? "").trim();
-    if (!pctStr) {
-      return [{ type: "error", message: "Specify a percentage to withdraw.", code: "invalid_input" }];
+  try {
+    if (amountKind === "all") {
+      amountDisplay = humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals);
+      amountRaw = parseTokenAmount(amountDisplay, pos.decimals, pos.symbol);
+    } else if (amountKind === "percentage") {
+      const pctStr = (parsed.data.amount ?? "").trim();
+      if (!pctStr) {
+        return [{ type: "error", message: "Specify a percentage to withdraw.", code: "invalid_input" }];
+      }
+      const pct = parsePercentString(pctStr);
+      const human = (pos.supplyBalanceHuman * pct) / 100;
+      amountDisplay = humanPositionToAmountDisplay(human, pos.decimals);
+      amountRaw = parseTokenAmount(amountDisplay, pos.decimals, pos.symbol);
+    } else {
+      const amt = (parsed.data.amount ?? "").trim();
+      if (!amt) {
+        return [{ type: "error", message: "Specify an amount to withdraw.", code: "invalid_input" }];
+      }
+      amountDisplay = amt;
+      amountRaw = parseTokenAmount(amt, pos.decimals, pos.symbol);
     }
-    const pct = parsePercentString(pctStr);
-    const human = (pos.supplyBalanceHuman * pct) / 100;
-    amountDisplay = humanPositionToAmountDisplay(human, pos.decimals);
-    amountRaw = decimalStringToRawAmount(amountDisplay, pos.decimals);
-  } else {
-    const amt = (parsed.data.amount ?? "").trim();
-    if (!amt) {
-      return [{ type: "error", message: "Specify an amount to withdraw.", code: "invalid_input" }];
-    }
-    amountDisplay = amt;
-    amountRaw = decimalStringToRawAmount(amt, pos.decimals);
-  }
 
-  const maxRaw = decimalStringToRawAmount(
-    humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals),
-    pos.decimals,
-  );
-  if (amountRaw > maxRaw) {
-    return [{ type: "error", message: "That amount is larger than your Navi position.", code: "invalid_amount" }];
+    const maxRaw = parseTokenAmount(
+      humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals),
+      pos.decimals,
+      pos.symbol,
+    );
+    if (amountRaw > maxRaw) {
+      return [{ type: "error", message: "That amount is larger than your Navi position.", code: "invalid_amount" }];
+    }
+  } catch (e) {
+    if (e instanceof TokenAmountError) {
+      const code = e.code === "decimals_unresolved" ? "decimals_unresolved" : "invalid_amount";
+      return [{ type: "error", message: e.message, code }];
+    }
+    throw e;
   }
 
   const gasBudgetFormatted = await estimateGasBudgetFormatted(net.environment);

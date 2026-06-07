@@ -11,6 +11,7 @@ import {
 } from "../../../main/services/chains/sui/sui-aftermath-swap.service";
 import { getSuiClientForEnvironment } from "../../../main/services/chains/sui/sui-client.service";
 import type { SuiChainEnvironment } from "../../../config/chains/sui";
+import { toAftermathSlippage } from "../../../shared/swap/slippage";
 
 export type RebalanceSwapLegSnapshot = {
   legId: string;
@@ -32,6 +33,7 @@ export async function buildRebalancePtbBytes(
     const leg = legs[i];
     const alias = `rebalanceSwap${i}`;
     const route = deserializeAftermathRoute(leg.swapSnapshot.completeRouteJson);
+    toAftermathSlippage(leg.swapSnapshot.slippageBps);
     await appendAftermathSwapToTransaction(ctx, {
       completeRoute: route,
       slippageBps: leg.swapSnapshot.slippageBps,

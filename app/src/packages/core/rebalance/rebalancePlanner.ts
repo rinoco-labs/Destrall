@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { RebalanceProposalResult } from "../../../assistant/assistantResultTypes";
 import type { TokenBalanceView } from "../../../types/blockchain";
 import { expandUserTokenAlias, tokenLabelsMatch } from "../../../services/tokens/tokenAliases";
+import { formatTokenAmount, parseTokenAmount } from "../../../shared/tokens/amounts";
 
 /** Floor / ceiling for per-leg notional filter (USD) */
 const DUST_USD_MIN = 0.35;
@@ -163,18 +164,30 @@ export function calculateSwapDeltas(
   };
   const usdPerUnit = (sym: string): number | null => {
     const b = resolveBal(sym);
-    if (!b) return null;
+    if (!b || typeof b.decimals !== "number" || !Number.isFinite(b.decimals)) return null;
     const usd = parseBalanceUsd(b);
-    const raw = parseFloat(b.balanceFormatted.replace(/,/g, ""));
-    if (!Number.isFinite(raw) || raw <= 0 || usd <= 0) return null;
-    return usd / raw;
+    if (usd <= 0) return null;
+    try {
+      const human = formatTokenAmount(BigInt(b.balanceRaw), b.decimals);
+      const humanNum = Number.parseFloat(human);
+      if (!Number.isFinite(humanNum) || humanNum <= 0) return null;
+      return usd / humanNum;
+    } catch {
+      return null;
+    }
   };
 
-  const formatAmt = (sym: string, units: number): string => {
+  const formatAmt = (sym: string, units: number): string | null => {
     const b = resolveBal(sym);
-    const d = b?.decimals ?? 6;
-    const s = units.toFixed(Math.min(6, d));
-    return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") || "0";
+    if (!b || typeof b.decimals !== "number" || !Number.isFinite(b.decimals)) return null;
+    const maxFrac = Math.min(b.decimals, 8);
+    const unitsStr = units.toFixed(maxFrac);
+    try {
+      const raw = parseTokenAmount(unitsStr, b.decimals, b.symbol);
+      return formatTokenAmount(raw, b.decimals);
+    } catch {
+      return null;
+    }
   };
 
   const swaps: SwapDeltaLeg[] = [];
@@ -214,10 +227,16 @@ export function calculateSwapDeltas(
         continue;
       }
 
+      const amountDisplay = formatAmt(seller, units);
+      if (!amountDisplay) {
+        dustSkipped.push(`Could not format ${seller} swap amount with wallet decimals.`);
+        continue;
+      }
+
       swaps.push({
         fromSymbol: seller,
         toSymbol: buyer,
-        amountDisplay: formatAmt(seller, units),
+        amountDisplay,
       });
 
       work.set(seller, sellDelta + moveUsd);

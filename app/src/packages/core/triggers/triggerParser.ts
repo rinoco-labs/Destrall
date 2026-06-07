@@ -92,7 +92,7 @@ function buildPriceDraft(params: {
     condition,
     action: params.action,
     maxExecutions: params.maxExecutions ?? 1,
-    slippageBps: 50,
+    slippageBps: 100,
   };
 }
 

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { formatWalletAddress } from "../../../shared/formatWalletAddress";
+import { formatSlippageBpsForDisplay } from "../../../shared/swap/slippage";
 import { Loader2, Users, Zap } from "lucide-react";
 import type {
   AssistantStructuredResult,
@@ -1110,7 +1111,7 @@ function TriggerProposalCard({
         </div>
         <div className="flex justify-between gap-2">
           <dt className="text-muted-foreground">Slippage cap</dt>
-          <dd>{block.slippageBps} bps</dd>
+          <dd>{formatSlippageBpsForDisplay(block.slippageBps)}</dd>
         </div>
         {(block.scheduleDisplay || block.scheduleLabel) && (
           <div className="flex justify-between gap-2">
