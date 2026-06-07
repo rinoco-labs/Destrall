@@ -685,10 +685,10 @@ function ContactDisambiguationCard({
               Choose recipient
             </p>
             <p className="text-sm font-semibold">
-              Multiple matches for “{block.originalRecipientQuery}”
+              I found multiple contacts matching “{block.originalRecipientQuery}”. Choose which one you want to send to.
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Sending {block.amount} {block.token}. Tap the correct contact or account.
+              Sending {block.amount} {block.token}. Tap the correct contact.
             </p>
           </div>
         </div>

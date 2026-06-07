@@ -8,16 +8,21 @@ import { executePackageAction } from "../../../packages/runtime/actionExecutor";
 import { contactRepository } from "../../persistence/repositories/contactRepository";
 import { walletService } from "../../wallet/walletService";
 import { chatHistoryService } from "./chatHistoryService";
-import { tryParseSuiAddress } from "../../../services/contacts/contactResolutionService";
+import { networkSettingsService } from "../network/networkSettingsService";
+import { resolveAddressForSend } from "../../../services/contacts/resolveAddressForSend";
 
-function resolvePickAddress(pickedId: string): string | null {
+async function resolvePickAddress(pickedId: string): Promise<{ address: string; displayName?: string } | null> {
   const contact = contactRepository.getById(pickedId);
   if (contact) {
-    return tryParseSuiAddress(contact.address);
+    const env = networkSettingsService.getSuiEnvironment();
+    const address = await resolveAddressForSend(contact.address, env);
+    return address ? { address, displayName: contact.name } : null;
   }
   const account = walletService.getWalletAccount(pickedId);
   if (account?.chain === "sui") {
-    return tryParseSuiAddress(account.address);
+    const env = networkSettingsService.getSuiEnvironment();
+    const address = await resolveAddressForSend(account.address, env);
+    return address ? { address, displayName: account.name } : null;
   }
   return null;
 }
@@ -56,8 +61,8 @@ export async function resolveAssistantContactDisambiguation(params: {
     throw new Error("That choice is not part of this disambiguation.");
   }
 
-  const address = resolvePickAddress(params.pickedMatchId);
-  if (!address) {
+  const picked = await resolvePickAddress(params.pickedMatchId);
+  if (!picked) {
     throw new Error("Could not resolve address for the selected entry.");
   }
 
@@ -67,7 +72,8 @@ export async function resolveAssistantContactDisambiguation(params: {
     input: {
       token: block.token,
       amount: block.amount,
-      recipient: address,
+      recipient: picked.address,
+      recipientDisplayName: picked.displayName,
     },
   });
 

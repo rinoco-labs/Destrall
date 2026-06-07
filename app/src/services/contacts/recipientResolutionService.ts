@@ -31,6 +31,7 @@ export async function resolveSendRecipient(params: {
     recipient: params.recipient,
     contacts: params.contacts,
     otherAccounts: params.otherAccounts,
+    logContext: "assistant-send",
   });
 
   if (label.kind === "sui_address") {

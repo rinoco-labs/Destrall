@@ -163,7 +163,7 @@ function captionForBlocks(
     case "assistant_capabilities":
       return "Here are the main things I can help you do.";
     case "contact_disambiguation":
-      return "Pick the intended recipient on the card to continue.";
+      return `I found multiple contacts matching '${head.originalRecipientQuery}'. Choose which one you want to send to.`;
     case "transaction_result":
     case "swap_execution_result":
     case "yield_execution_result":
