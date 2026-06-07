@@ -20,6 +20,8 @@ import {
   Network,
   ArrowLeftRight,
 } from "lucide-react";
+import { formatWalletAddress } from "../../../shared/formatWalletAddress";
+import { ChatMessageText, ChatMessageTextWithBold } from "./ChatMessageText";
 import {
   Dialog,
   DialogContent,
@@ -430,7 +432,12 @@ function WalletAddressInner({
           </div>
         </div>
         <div className="p-4 space-y-3">
-          <p className="text-xs font-mono break-all text-foreground leading-relaxed">{address}</p>
+          <p
+            className="text-xs font-mono text-foreground leading-relaxed min-w-0 max-w-full wrap-anywhere wrap-break-word"
+            title={address}
+          >
+            {formatWalletAddress(address)}
+          </p>
           <button
             type="button"
             onClick={() => void copy()}
@@ -838,7 +845,11 @@ export function ActionBubble({
         </div>
 
         {isFailed && msg.errorMessage && (
-          <p className="mt-2 text-xs text-rose-500 font-medium">{msg.errorMessage}</p>
+          <ChatMessageText
+            text={msg.errorMessage}
+            as="div"
+            className="mt-2 text-xs text-rose-500 font-medium"
+          />
         )}
 
         <ul className="mt-3 space-y-1.5">
@@ -945,21 +956,19 @@ export function ActionBubble({
                 })}
               </div>
 
-              <dl className="divide-y divide-border/60 text-sm">
+              <dl className="divide-y divide-border/60 text-sm min-w-0">
                 {msg.details.map((d) => (
-                  <div key={d.k} className="flex items-center justify-between py-2.5 gap-4">
-                    <dt className="text-muted-foreground">{d.k}</dt>
-                    <dd className="font-semibold text-right">
-                      {d.v.split("**").map((c, i) =>
-                        i % 2 === 1 ? <strong key={i}>{c}</strong> : <span key={i}>{c}</span>,
-                      )}
+                  <div key={d.k} className="flex items-center justify-between py-2.5 gap-4 min-w-0">
+                    <dt className="text-muted-foreground shrink-0">{d.k}</dt>
+                    <dd className="font-semibold text-right min-w-0 max-w-[65%]">
+                      <ChatMessageTextWithBold text={d.v} as="span" />
                     </dd>
                   </div>
                 ))}
               </dl>
-              <div className="flex items-start gap-2 rounded-2xl border border-brand/30 bg-brand/5 p-3 text-xs text-muted-foreground">
+              <div className="flex items-start gap-2 rounded-2xl border border-brand/30 bg-brand/5 p-3 text-xs text-muted-foreground min-w-0">
                 <ShieldAlert className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <p>{msg.note}</p>
+                <ChatMessageText text={msg.note} as="span" className="min-w-0" />
               </div>
               {isDone && msg.digest && (
                 <div className="space-y-2">
@@ -1044,7 +1053,7 @@ export function TransactionResultBubble({
     <div className="flex justify-start">
       <div className="w-full max-w-md rounded-2xl border border-emerald-500/40 bg-card/60 p-4 space-y-2">
         <p className="text-[10px] font-bold tracking-[0.18em] text-emerald-500 uppercase">{title}</p>
-        <p className="text-sm text-muted-foreground">{summary}</p>
+        <ChatMessageText text={summary} as="div" className="text-sm text-muted-foreground" />
         <div className="flex flex-wrap gap-2 pt-1">
           <button
             type="button"
@@ -1073,9 +1082,9 @@ export function TransactionResultBubble({
 
 export function StructuredErrorBubble({ message }: { message: string }) {
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[90%] rounded-3xl rounded-bl-lg border border-destructive/40 bg-destructive/10 px-5 py-4 text-sm text-destructive">
-        {message}
+    <div className="flex justify-start min-w-0">
+      <div className="max-w-[90%] min-w-0 rounded-3xl rounded-bl-lg border border-destructive/40 bg-destructive/10 px-5 py-4 text-sm text-destructive overflow-hidden">
+        <ChatMessageText text={message} as="div" />
       </div>
     </div>
   );

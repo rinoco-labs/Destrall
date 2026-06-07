@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { formatWalletAddress } from "../../../shared/formatWalletAddress";
 import { Loader2, Users, Zap } from "lucide-react";
 import type {
   AssistantStructuredResult,
@@ -702,8 +703,11 @@ function ContactDisambiguationCard({
                 className="w-full flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-background/50 px-3 py-2.5 text-left text-sm hover:bg-background/80 transition disabled:opacity-60"
               >
                 <span className="font-semibold truncate">{m.name}</span>
-                <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[45%]">
-                  {m.address.slice(0, 10)}…{m.address.slice(-6)}
+                <span
+                  className="text-[11px] font-mono text-muted-foreground truncate max-w-[45%]"
+                  title={m.address}
+                >
+                  {formatWalletAddress(m.address)}
                 </span>
                 {busyId === m.id ? <Loader2 className="w-4 h-4 shrink-0 animate-spin text-brand" /> : null}
               </button>

@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AssistantStructuredMessageRenderer } from "@/components/assistant/AssistantStructuredMessageRenderer";
+import { ChatMessageText, ChatMessageTextWithBold } from "@/components/assistant/ChatMessageText";
 import { AssistantEmptyState } from "@/components/assistant/AssistantStarterChips";
 import { parseAssistantMessageMetadata } from "../../assistant/assistantMessageMetadata";
 import type { AssistantStructuredResult } from "../../assistant/assistantResultTypes";
@@ -177,8 +178,8 @@ function formatChatListTime(iso: string | null | undefined): string {
 
 function UserBubble({ text, attachments }: { text: string; attachments?: Attachment[] }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-3xl rounded-br-lg bg-brand text-brand-foreground px-5 py-3 text-sm font-medium shadow-sm space-y-2">
+    <div className="flex justify-end min-w-0">
+      <div className="max-w-[85%] min-w-0 rounded-3xl rounded-br-lg bg-brand text-brand-foreground px-5 py-3 text-sm font-medium shadow-sm space-y-2">
         {attachments && attachments.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {attachments.map((a) =>
@@ -201,7 +202,7 @@ function UserBubble({ text, attachments }: { text: string; attachments?: Attachm
             )}
           </div>
         )}
-        {text && <div>{text}</div>}
+        {text && <ChatMessageText text={text} as="div" />}
       </div>
     </div>
   );
@@ -209,17 +210,9 @@ function UserBubble({ text, attachments }: { text: string; attachments?: Attachm
 
 function AssistantBubble({ text }: { text: string }) {
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[90%] rounded-3xl rounded-bl-lg border border-border bg-card/60 px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap">
-        {text.split("**").map((chunk, i) =>
-          i % 2 === 1 ? (
-            <strong key={i} className="font-semibold">
-              {chunk}
-            </strong>
-          ) : (
-            <span key={i}>{chunk}</span>
-          )
-        )}
+    <div className="flex justify-start min-w-0">
+      <div className="max-w-[90%] min-w-0 rounded-3xl rounded-bl-lg border border-border bg-card/60 px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap overflow-hidden">
+        <ChatMessageTextWithBold text={text} />
       </div>
     </div>
   );
@@ -654,7 +647,7 @@ function AssistantPage() {
             onDragOver={onDragOver}
             onDrop={onDrop}
           >
-            <div ref={scrollRef} className="flex-1 overflow-y-auto pr-2 space-y-4">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pr-2 space-y-4 min-w-0">
               {showEmptyState ? (
                 <AssistantEmptyState
                   disabled={assistantStreaming || !isLoaded}

@@ -17,7 +17,12 @@ const KNOWN_DAPP_NAMES: Record<string, string> = {
   "app.suilend.com": "Suilend",
 };
 
-export function formatAddress(address: string, head = 6, tail = 4): string {
+import { formatWalletAddress, shouldShortenWalletAddress } from "../../shared/formatWalletAddress.ts";
+
+export function formatAddress(address: string, head = 8, tail = 6): string {
+  if (shouldShortenWalletAddress(address, { start: head, end: tail })) {
+    return formatWalletAddress(address, { start: head, end: tail });
+  }
   const trimmed = address.trim();
   if (trimmed.length <= head + tail + 3) return trimmed;
   return `${trimmed.slice(0, head)}…${trimmed.slice(-tail)}`;
