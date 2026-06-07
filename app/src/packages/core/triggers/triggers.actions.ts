@@ -7,13 +7,15 @@ import {
   triggerIdInputSchema,
   triggerNameHintInputSchema,
 } from "./triggers.schemas";
-import { parseTriggerFromText } from "./triggerParser";
+import { parseTriggerFromText, resolveAtPriceOperator } from "./triggerParser";
 import { buildTriggerProposal } from "./triggerProposalBuilder";
 import { triggerStorageService } from "./triggerStorageService";
 import { executeDueTriggerById } from "./triggerExecutor";
-import type { TriggerDraft, TriggerRecord } from "./triggers.types";
+import type { TriggerDraft, TriggerPriceCondition, TriggerRecord } from "./triggers.types";
 import { defaultNextCheckAtIso } from "../../../services/time/time.service";
 import { mapTriggerRecordToListItem } from "../../../services/triggers/triggerListMapper";
+import { priceService } from "../../../services/prices/priceService";
+import { logTriggerIntentRouting } from "../../../assistant/triggerIntentVocabulary";
 
 function findTriggerByNameHint(accountId: string, hint: string): TriggerRecord | null {
   const needle = hint.toLowerCase();
@@ -23,6 +25,36 @@ function findTriggerByNameHint(accountId: string, hint: string): TriggerRecord |
     rows.find((r) => r.description.toLowerCase().includes(needle)) ??
     null
   );
+}
+
+async function finalizeTriggerDraft(draft: TriggerDraft, ctx: ActionContext): Promise<TriggerDraft | { error: string }> {
+  if (draft.type !== "price") return draft;
+
+  const cond = draft.condition as TriggerPriceCondition;
+  if (!cond.needsAtResolution && cond.operator !== "target") return draft;
+
+  const quote = await priceService.getTokenPriceBySymbol(cond.asset);
+  const resolved = resolveAtPriceOperator({
+    asset: cond.asset,
+    priceUsd: cond.priceUsd ?? "",
+    action: draft.action,
+    currentPriceUsd: quote?.priceUsd ?? null,
+  });
+
+  if (resolved.error) {
+    return { error: resolved.error };
+  }
+
+  const nextCond: TriggerPriceCondition = {
+    ...cond,
+    operator: resolved.operator,
+    needsAtResolution: undefined,
+  };
+  return {
+    ...draft,
+    condition: nextCond,
+    description: `${cond.asset} ${resolved.operator} $${cond.priceUsd}`,
+  };
 }
 
 export async function createTriggerAction(
@@ -43,6 +75,13 @@ export async function createTriggerAction(
     }
   } else if (parsed.data.naturalLanguage) {
     const result = parseTriggerFromText(parsed.data.naturalLanguage);
+    logTriggerIntentRouting({
+      rawText: parsed.data.naturalLanguage,
+      intent: "trigger",
+      triggerType: result.ok ? result.draft.type : undefined,
+      missingFields: result.ok ? undefined : result.missing,
+      proposalCreated: false,
+    });
     if (result.ok === false) {
       const ask = result.missing.join("; ");
       return [
@@ -53,16 +92,28 @@ export async function createTriggerAction(
         },
       ];
     }
-    draft = result.draft;
+    const finalized = await finalizeTriggerDraft(result.draft, ctx);
+    if ("error" in finalized) {
+      return [{ type: "error", message: finalized.error, code: "trigger_incomplete" }];
+    }
+    draft = finalized;
   } else {
     return [{ type: "error", message: "Describe the trigger you want to create.", code: "invalid_input" }];
   }
 
   const net = ctx.network.getActiveNetwork();
-  const built = buildTriggerProposal({ draft, ctx, networkLabel: net.displayName });
+  const built = await buildTriggerProposal({ draft, ctx, networkLabel: net.displayName });
   if ("error" in built) {
     return [{ type: "error", message: built.error, code: "trigger_build_failed" }];
   }
+
+  logTriggerIntentRouting({
+    rawText: parsed.data.naturalLanguage ?? "",
+    intent: "trigger",
+    triggerType: draft.type,
+    proposalCreated: true,
+  });
+
   return [built];
 }
 

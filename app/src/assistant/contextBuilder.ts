@@ -126,7 +126,7 @@ export async function buildCompactAssistantContext(
     "TRIGGER_ACTIONS: create_trigger (requires approval card), list_triggers, pause_trigger, resume_trigger, delete_trigger",
   );
   lines.push(
-    "RULE_TRIGGERS: Never create triggers without user approving the review card. Never execute outside pre-approved limits.",
+    "RULE_TRIGGERS: Trigger instructions (when/if/at/every + sell/buy/swap/deposit/withdraw) must produce a trigger proposal card — never generic DeFi advice. Never create triggers without user approving the review card. Never execute outside pre-approved limits.",
   );
 
   lines.push("RULE: Never ask for the wallet address — it is above. Never invent balances or APYs.");

@@ -156,9 +156,9 @@ function captionForBlocks(
     case "trigger_proposal": {
       const when = head.nextExecutionLabel ?? head.scheduleDisplay ?? head.scheduleLabel;
       if (when) {
-        return `Scheduled automation is on the card (${when}). Tap Approve Trigger to save — nothing runs until you pre-approve.`;
+        return `I prepared a trigger for review (${when}). Tap Approve Trigger on the card to save — nothing runs until you pre-approve.`;
       }
-      return "Automation trigger ready — review the card and tap Approve Trigger to save. Nothing runs until you pre-approve.";
+      return "I prepared a trigger for review. Tap Approve Trigger on the card to save — nothing runs until you pre-approve.";
     }
     case "trigger_list":
       return `You have ${head.triggers.length} trigger(s) on the card — pause, resume, or delete from there.`;

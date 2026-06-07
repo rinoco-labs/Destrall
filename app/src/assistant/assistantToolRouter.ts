@@ -21,6 +21,7 @@ import { parseRebalanceTargets } from "../packages/core/rebalance/rebalancePlann
 import { isYieldPositionsQuestion } from "./yieldPositionIntent";
 import { logNaviIntentRouting } from "./naviIntentVocabulary";
 import { resolveNaviAssistantRoute, type NaviAssistantRoute } from "./naviAssistantRoute";
+import { hasTriggerCreateIntent, logTriggerIntentRouting } from "./triggerIntentVocabulary";
 
 export type RoutedAssistantToolCall = {
   namespacedName: string;
@@ -129,17 +130,21 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
     }
   }
 
-  if (
-    hasScheduleIntent(text) ||
-    (/\b(?:if|when)\b/i.test(text) &&
-      (/\b(?:above|below|goes?\s+(?:up|down)|price|trigger)\b/i.test(lower) ||
-        /\b(?:every\s+day|daily|collect\s+(?:my\s+)?yield)\b/i.test(lower))) ||
-    /\b(?:create|set\s+up|make)\s+(?:a\s+)?trigger\b/i.test(lower)
-  ) {
+  if (hasTriggerCreateIntent(text)) {
     const parsed = parseTriggerFromText(text);
-    if (parsed.ok) {
-      return { namespacedName: CREATE_TRIGGER_ACTION_NAME, input: { naturalLanguage: text } };
-    }
+    logTriggerIntentRouting({
+      rawText: text,
+      intent: "trigger",
+      triggerType: parsed.ok ? parsed.draft.type : undefined,
+      parsedCondition: parsed.ok
+        ? parsed.draft.description
+        : parsed.partial?.condition
+          ? JSON.stringify(parsed.partial.condition)
+          : undefined,
+      parsedAction: parsed.ok ? JSON.stringify(parsed.draft.action) : undefined,
+      missingFields: parsed.ok ? undefined : parsed.missing,
+    });
+    return { namespacedName: CREATE_TRIGGER_ACTION_NAME, input: { naturalLanguage: text } };
   }
 
   const swapTrade = text.match(

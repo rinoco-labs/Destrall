@@ -152,8 +152,11 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
     longDescription:
       "Triggers let you save rules such as “sell 10 SUI if price goes above $5” or “collect yield every day at 10am.” Creating a trigger always shows a review card — nothing is saved until you pre-approve limits. Active triggers are monitored while Destrall is running; pause, resume, or delete from the Triggers page or via chat. Execution stays within what you approved on the card.",
     examples: [
+      "When SUI is at 0.8 USD sell 1 SUI",
+      "When SUI drops to 0.69 USD buy 10 USDC worth of SUI",
+      "Sell 1 SUI at 3:10 PM",
+      "Deposit 20 USDC into yield every day at 10am",
       "If SUI goes above $5 sell 10 SUI",
-      "Collect my yield every day at 10am",
       "List my triggers",
       "Pause my SUI price trigger",
     ],

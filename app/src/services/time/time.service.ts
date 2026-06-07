@@ -1,12 +1,12 @@
-import type { TriggerTimeSchedule } from "../../packages/core/triggers/triggers.types";
-import type { CurrentTimePayload, TimeContextSnapshot } from "./time.types";
-import { timezoneSettingsService } from "./timezone.service";
+import type { TriggerTimeSchedule } from "../../packages/core/triggers/triggers.types.ts";
+import type { CurrentTimePayload, TimeContextSnapshot } from "./time.types.ts";
+import { timezoneSettingsService } from "./timezone.service.ts";
 import {
   nextDailyOccurrence,
   nextWeeklyOccurrence,
   parseNaturalSchedule,
   stripSchedulePhrases,
-} from "./schedule-parser";
+} from "./schedule-parser.ts";
 import {
   convertLocalPartsToUtc,
   formatCountdown,
@@ -15,11 +15,11 @@ import {
   isPastDate,
   pad2,
   to24Hour,
-} from "./time-utils";
+} from "./time-utils.ts";
 
-export { parseNaturalSchedule, stripSchedulePhrases } from "./schedule-parser";
-export type { ParsedNaturalSchedule, RecurrenceSchedule, TimeContextSnapshot, CurrentTimePayload } from "./time.types";
-export { convertLocalPartsToUtc, getZonedParts, pad2, to24Hour } from "./time-utils";
+export { parseNaturalSchedule, stripSchedulePhrases } from "./schedule-parser.ts";
+export type { ParsedNaturalSchedule, RecurrenceSchedule, TimeContextSnapshot, CurrentTimePayload } from "./time.types.ts";
+export { convertLocalPartsToUtc, getZonedParts, pad2, to24Hour } from "./time-utils.ts";
 
 export function getCurrentTime(): Date {
   return new Date();

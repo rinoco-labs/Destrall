@@ -15,6 +15,8 @@ export type TriggerPriceCondition = {
   priceUsd?: string;
   percentChange?: string;
   direction?: "up" | "down";
+  /** Set when "at $X" needs live price to pick above vs below. */
+  needsAtResolution?: boolean;
 };
 
 export type TriggerTimeSchedule = {
@@ -43,7 +45,24 @@ export type TriggerYieldCollectAction = {
   asset?: string;
 };
 
-export type TriggerAction = TriggerSwapAction | TriggerYieldCollectAction;
+export type TriggerYieldDepositAction = {
+  type: "yield_deposit";
+  asset: string;
+  amount: string;
+};
+
+export type TriggerYieldWithdrawAction = {
+  type: "yield_withdraw";
+  asset: string;
+  amountKind: "absolute" | "all" | "percentage";
+  amount?: string;
+};
+
+export type TriggerAction =
+  | TriggerSwapAction
+  | TriggerYieldCollectAction
+  | TriggerYieldDepositAction
+  | TriggerYieldWithdrawAction;
 
 export type TriggerApprovalLimits = {
   approvedAt?: string;

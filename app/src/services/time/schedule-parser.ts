@@ -1,12 +1,12 @@
-import type { TriggerTimeSchedule } from "../../packages/core/triggers/triggers.types";
-import type { ParsedNaturalSchedule, RecurrenceSchedule } from "./time.types";
+import type { TriggerTimeSchedule } from "../../packages/core/triggers/triggers.types.ts";
+import type { ParsedNaturalSchedule, RecurrenceSchedule } from "./time.types.ts";
 import {
   convertLocalPartsToUtc,
   getZonedParts,
   isPastDate,
   pad2,
   to24Hour,
-} from "./time-utils";
+} from "./time-utils.ts";
 
 const WEEKDAY_INDEX: Record<string, number> = {
   sunday: 0,
@@ -157,6 +157,20 @@ export function parseNaturalSchedule(
     const [, day, h, m, ap] = weekly;
     const weekday = WEEKDAY_INDEX[day.toLowerCase()];
     const { hour, minute } = parseHourMinute(h, m, ap);
+    const next = nextWeeklyOccurrence(now, timezone, weekday, hour, minute);
+    const localTime = `${pad2(hour)}:${pad2(minute)}`;
+    const schedule: TriggerTimeSchedule = { kind: "weekly", weekday, localTime, timezone };
+    const recurrence: RecurrenceSchedule = { type: "weekly", weekday, hour, minute, timezone };
+    return okSchedule(schedule, recurrence, next, timezone, true);
+  }
+
+  const weeklyDayOnly = lower.match(
+    /\bevery\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  );
+  if (weeklyDayOnly) {
+    const weekday = WEEKDAY_INDEX[weeklyDayOnly[1].toLowerCase()];
+    const hour = 9;
+    const minute = 0;
     const next = nextWeeklyOccurrence(now, timezone, weekday, hour, minute);
     const localTime = `${pad2(hour)}:${pad2(minute)}`;
     const schedule: TriggerTimeSchedule = { kind: "weekly", weekday, localTime, timezone };

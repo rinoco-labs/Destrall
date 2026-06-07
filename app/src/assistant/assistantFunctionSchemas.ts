@@ -208,14 +208,15 @@ export const swapThenDepositFunctionSchema = {
 export const createTriggerFunctionSchema = {
   name: CREATE_TRIGGER_ACTION_NAME,
   description:
-    "Prepare an automation trigger for explicit user pre-approval. Never saves or executes silently. Price and schedule triggers only within declared limits.",
+    "Prepare an automation trigger proposal card for explicit user pre-approval. Never saves or executes silently. Use for when/if/at/every + action phrasing. Examples: 'when SUI is at 0.8 USD sell 1 SUI' → price trigger; 'sell 1 SUI at 3:10 PM' → time trigger; 'when SUI drops to 0.69 USD buy 10 USDC worth of SUI' → price buy trigger. Do not explain triggers — create the proposal or ask only for missing required fields.",
   parameters: {
     type: "object",
     additionalProperties: false,
     properties: {
       naturalLanguage: {
         type: "string",
-        description: "User description of the trigger, e.g. sell 10 SUI if SUI goes above $5.",
+        description:
+          "User description of the trigger, e.g. 'when SUI is at 0.8 USD sell 1 SUI', 'sell 1 SUI at 3:10 PM', or 'deposit 20 USDC into yield every day at 10am'.",
       },
     },
     required: ["naturalLanguage"],
