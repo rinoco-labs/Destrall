@@ -71,6 +71,13 @@ interface ChainAdapter {
 - **Receive**: Show addresses/QR from main-derived metadata exposed over IPC (addresses are **not** secrets).
 - **Send**: Renderer collects user intent (destination, amount, memo if any) → main **builds** → **simulates** (if supported) → **confirms** → **signs** → **executes**.
 
+### Token amount conversion (all send/swap/yield flows)
+
+- All human ↔ raw amount conversion uses **`app/src/shared/tokens/amounts.ts`** (`parseTokenAmount`, `formatTokenAmount`). Never use JavaScript floating point for on-chain amounts.
+- **Decimals source of truth**: wallet balance rows from `fetchSuiBalancesForAddress`, which resolve decimals via on-chain `getCoinMetadata` then the swappable token registry. Do **not** default to 9 decimals except for confirmed native SUI.
+- If decimals cannot be resolved for a coin type, omit the balance row and surface a clear error (`decimals_unresolved`) rather than building a transaction with guessed decimals.
+- Assistant send/swap/Navi/rebalance flows must **resolve the token first**, then convert amounts using that token’s `decimals` from the active wallet balance row.
+
 ## Activity
 
 - Persist **transaction history pointers** (signatures, hashes, timestamps) and **denormalized labels** for UX.
