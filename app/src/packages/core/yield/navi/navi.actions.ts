@@ -15,7 +15,7 @@ import {
   prepareYieldWithdrawInputSchema,
 } from "./navi.schemas";
 import { fetchNaviPools } from "./navi-pools.service";
-import { resolveNaviPoolByAsset } from "../../../../services/tokens/naviTokenResolver";
+import { resolveNaviPoolByAsset, resolveNaviPositionAsset } from "../../../../services/tokens/naviTokenResolver";
 import { findWalletBalanceByCoinType } from "../../../../services/tokens/walletTokenResolver";
 import { validateSpendAmount } from "../../../../services/tokens/balanceValidation";
 import { buildNaviPositionViews, fetchNaviPositionsOnChain } from "./navi-positions.service";
@@ -30,12 +30,12 @@ import type { NaviYieldProposalSnapshotV1 } from "./navi.types";
 
 const PROPOSAL_TTL_MS = 3 * 60 * 1000;
 
-function assertSuiMainnetForNavi(env: string, displayName: string): AssistantStructuredResult[] | null {
-  if (env !== "mainnet") {
+function assertSuiMainnetForNavi(_env: string, _displayName: string): AssistantStructuredResult[] | null {
+  if (_env !== "mainnet") {
     return [
       {
         type: "error",
-        message: `Navi yield is only wired for Sui mainnet right now (current: ${displayName}). Switch to mainnet to view pools or prepare transactions.`,
+        message: "Navi yield features are available on Sui mainnet. Switch to mainnet to continue.",
         code: "unsupported_network",
       },
     ];
@@ -126,7 +126,11 @@ export async function listYieldPoolsAction(
           coinType: p.coinType,
         };
       }),
-      emptyHint: pools.length ? undefined : "No active Navi pools returned for this network.",
+      emptyHint: pools.length
+        ? undefined
+        : assetFilter
+          ? `No active Navi pools match "${assetFilter}" on mainnet.`
+          : "I could not load available Navi pools right now. Try again later.",
     },
   ];
 }
@@ -170,7 +174,7 @@ export async function getYieldPositionsAction(
       })),
       emptyHint:
         filtered.length === 0
-          ? "No open Navi supply positions detected for this address on mainnet."
+          ? "You do not currently have any open Navi savings/yield positions."
           : undefined,
     },
   ];
@@ -196,13 +200,19 @@ export async function prepareYieldDepositAction(
   const pools = await fetchNaviPools(net.environment, false);
   const poolResult = resolveNaviPoolByAsset(pools, parsed.data.asset);
   if (poolResult.kind === "not_found") {
-    return [{ type: "error", message: poolResult.message, code: "unknown_asset" }];
+    return [
+      {
+        type: "error",
+        message: "Navi does not currently have a supported pool for this token.",
+        code: "unknown_asset",
+      },
+    ];
   }
   if (poolResult.kind === "ambiguous") {
     return [
       {
         type: "error",
-        message: `Multiple Navi pools match "${parsed.data.asset.trim()}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}. Be more specific.`,
+        message: `Multiple Navi pools match "${parsed.data.asset.trim()}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}. Choose which pool you want.`,
         code: "ambiguous_asset",
       },
     ];
@@ -217,7 +227,7 @@ export async function prepareYieldDepositAction(
     return [
       {
         type: "error",
-        message: `No ${pool.symbol} (wallet coin) in this connected wallet. Deposit requires the underlying token in your wallet first.`,
+        message: `I could not find ${pool.symbol} in your connected wallet.`,
         code: "insufficient_funds",
       },
     ];
@@ -282,6 +292,8 @@ export async function prepareYieldDepositAction(
     expiresAtMs: now + PROPOSAL_TTL_MS,
   };
 
+  const walletBalanceDisplay = formatTokenAmount(BigInt(bal.balanceRaw), bal.decimals);
+
   const card = buildNaviDepositProposalCard({
     assetSymbol: pool.symbol,
     amountDisplay,
@@ -289,6 +301,9 @@ export async function prepareYieldDepositAction(
     apyPct: pool.supplyApy,
     gasBudgetFormatted,
     riskLabel: pool.risk,
+    walletBalanceDisplay,
+    decimals: bal.decimals,
+    userPhrase: "yield / savings / Navi",
   });
 
   return [
@@ -332,22 +347,44 @@ export async function prepareYieldWithdrawAction(
   }
 
   const pools = await fetchNaviPools(net.environment, false);
-  const poolResult = resolveNaviPoolByAsset(pools, parsed.data.asset);
-  if (poolResult.kind === "not_found") {
-    return [{ type: "error", message: poolResult.message, code: "unknown_asset" }];
-  }
-  if (poolResult.kind === "ambiguous") {
+  const onChain = await fetchNaviPositionsOnChain(account.address, net.environment);
+  const positionLookup = onChain.map((p) => ({
+    assetSymbol: p.symbol,
+    coinType: p.coinType,
+    assetId: p.assetId,
+  }));
+  const posResult = resolveNaviPositionAsset(positionLookup, parsed.data.asset);
+  if (posResult.kind === "not_found") {
     return [
       {
         type: "error",
-        message: `Multiple Navi pools match "${parsed.data.asset.trim()}": ${poolResult.candidates.map((c) => c.symbol).join(", ")}.`,
+        message: "You do not currently have any open Navi savings/yield positions for that token.",
+        code: "no_position",
+      },
+    ];
+  }
+  if (posResult.kind === "ambiguous") {
+    const syms = [...new Set(posResult.positions.map((p) => p.assetSymbol))].join(", ");
+    return [
+      {
+        type: "error",
+        message: `I found multiple Navi positions matching "${parsed.data.asset.trim()}": ${syms}. Choose which one you want to withdraw from.`,
         code: "ambiguous_asset",
       },
     ];
   }
-  const pool = poolResult.pool;
 
-  const onChain = await fetchNaviPositionsOnChain(account.address, net.environment);
+  const pool = pools.find((p) => p.assetId === posResult.position.assetId);
+  if (!pool) {
+    return [
+      {
+        type: "error",
+        message: "Navi does not currently have a supported pool for this token.",
+        code: "unknown_asset",
+      },
+    ];
+  }
+
   const pos = onChain.find((p) => p.assetId === pool.assetId);
   if (!pos) {
     return [
@@ -420,6 +457,8 @@ export async function prepareYieldWithdrawAction(
     apyPct: pool.supplyApy,
     gasBudgetFormatted,
     positionSummary: `${humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals)} ${pool.symbol} supplied`,
+    suppliedBalanceDisplay: humanPositionToAmountDisplay(pos.supplyBalanceHuman, pos.decimals),
+    userPhrase: "yield / savings / Navi",
   });
 
   return [

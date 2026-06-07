@@ -108,7 +108,7 @@ export const prepareSwapFunctionSchema = {
 export const listYieldPoolsFunctionSchema = {
   name: LIST_YIELD_POOLS_ACTION_NAME,
   description:
-    "List Navi lending pools with live APY on Sui mainnet (read-only). Use for yield pool questions. Optional risk-based sorting.",
+    "List available Navi lending pools with live APY on Sui mainnet (read-only). Use when the user asks about available yield, savings pools, APYs, or where they can earn — 'yield' and 'savings' mean Navi. Optional risk-based sorting.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -127,7 +127,8 @@ export const listYieldPoolsFunctionSchema = {
 
 export const getYieldPositionsFunctionSchema = {
   name: GET_YIELD_POSITIONS_ACTION_NAME,
-  description: "List the user's Navi supply positions on Sui mainnet (read-only).",
+  description:
+    "List the user's current Navi supply positions on Sui mainnet (read-only). Use when they ask about my yield/savings positions, what they have in yield or savings, or open Navi positions — not for available pools.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -141,7 +142,7 @@ export const getYieldPositionsFunctionSchema = {
 export const prepareYieldDepositFunctionSchema = {
   name: PREPARE_YIELD_DEPOSIT_ACTION_NAME,
   description:
-    "Prepare a Navi deposit transaction for user review. Never executes without explicit approval on the Navi card.",
+    "Prepare a Navi deposit transaction for user review when they want to deposit into yield, savings, or Navi. Never executes without explicit approval on the Navi card.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -157,7 +158,7 @@ export const prepareYieldDepositFunctionSchema = {
 export const prepareYieldWithdrawFunctionSchema = {
   name: PREPARE_YIELD_WITHDRAW_ACTION_NAME,
   description:
-    "Prepare a Navi withdraw transaction for user review. Never executes without explicit approval on the Navi card.",
+    "Prepare a Navi withdraw transaction for user review when they want to withdraw from yield, savings, or Navi. Resolves against Navi positions, not wallet balances. Never executes without explicit approval.",
   parameters: {
     type: "object",
     additionalProperties: false,

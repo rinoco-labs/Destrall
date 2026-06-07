@@ -23,6 +23,7 @@ import {
   SWAP_THEN_DEPOSIT_ACTION_NAME,
 } from "./assistantFunctionSchemas";
 import { isYieldPositionsQuestion } from "./yieldPositionIntent";
+import { logNaviIntentRouting } from "./naviIntentVocabulary";
 import { recordYieldOptimizationQuery, formatActivityCaption } from "./behaviorMemoryStore";
 import {
   getConversationContext,
@@ -60,6 +61,9 @@ function isPortfolioOrBalanceQuestion(lower: string): boolean {
   if (isWalletAddressQuestion(lower)) return false;
   if (isYieldPositionsQuestion(lower)) return false;
   if (/\bnavi\b/.test(lower) && /\b(pool|pools|yield|apy|lend|deposit)\b/.test(lower)) {
+    return false;
+  }
+  if (/\b(?:savings?|yield|earn(?:ing)?)\b/.test(lower) && /\b(?:pool|pools|available|opportunities?|where\s+can\s+i\s+earn)\b/.test(lower)) {
     return false;
   }
   return (
@@ -126,8 +130,8 @@ function captionForBlocks(
       return `Found ${head.pools.length} live Navi pools on ${head.network}. Details and APYs are on the card — supply always needs your explicit approval.`;
     case "yield_positions":
       return head.positions.length
-        ? `You have ${head.positions.length} Navi position(s) on ${head.network} — amounts and APYs are on the card.`
-        : `No Navi supply positions detected on ${head.network} for this wallet (see card).`;
+        ? `You have ${head.positions.length} Navi savings/yield position(s) on ${head.network} — amounts and APYs are on the card.`
+        : "You do not currently have any open Navi savings/yield positions.";
     case "swappable_tokens":
       return `${head.coins.length} swappable tokens via ${head.routerLabel} — browse on the card.`;
     case "portfolio_summary": {
@@ -381,6 +385,12 @@ export async function planAssistantStructuredTurn(
   }
 
   if (isYieldPositionsQuestion(lower)) {
+    logNaviIntentRouting({
+      rawText: text,
+      category: "positions",
+      routedAction: GET_YIELD_POSITIONS_ACTION_NAME,
+      walletAddress: account.address,
+    });
     try {
       const blocks = await executePackageAction({
         accountId,

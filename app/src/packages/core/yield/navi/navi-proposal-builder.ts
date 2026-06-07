@@ -8,10 +8,13 @@ export function buildNaviDepositProposalCard(params: {
   apyPct: number;
   gasBudgetFormatted: string;
   riskLabel: string;
+  walletBalanceDisplay?: string;
+  decimals?: number;
+  userPhrase?: string;
 }): AssistantProposalCard {
   const apyStr = `${params.apyPct.toFixed(2)}%`;
   return {
-    title: "Navi deposit",
+    title: "Deposit into Navi",
     label: `${params.amountDisplay} ${params.assetSymbol}`,
     source: { type: "package", name: "NAVI PROTOCOL" },
     flows: [
@@ -25,9 +28,15 @@ export function buildNaviDepositProposalCard(params: {
       },
     ],
     details: [
-      { k: "Action", v: "Navi Deposit" },
+      { k: "Action", v: "Deposit into Navi" },
+      ...(params.userPhrase ? [{ k: "Requested as", v: params.userPhrase } as const] : []),
       { k: "Asset", v: params.assetSymbol },
       { k: "Amount", v: `${params.amountDisplay} ${params.assetSymbol}` },
+      ...(params.decimals != null ? [{ k: "Decimals", v: String(params.decimals) } as const] : []),
+      ...(params.walletBalanceDisplay
+        ? [{ k: "Wallet balance", v: `${params.walletBalanceDisplay} ${params.assetSymbol}` } as const]
+        : []),
+      { k: "Navi pool", v: params.assetSymbol },
       { k: "Supply APY (indicative)", v: apyStr },
       { k: "Protocol", v: "Navi" },
       { k: "Network", v: params.networkLabel },
@@ -38,7 +47,7 @@ export function buildNaviDepositProposalCard(params: {
         v: `Supply ${params.amountDisplay} ${params.assetSymbol} into Navi lending on ${params.networkLabel}.`,
       },
     ],
-    note: "Rates and gas are estimates. Approving builds and signs a real transaction on Sui.",
+    note: "APY is indicative and can change. Rates and gas are estimates. Approving builds and signs a real transaction on Sui.",
   };
 }
 
@@ -49,10 +58,12 @@ export function buildNaviWithdrawProposalCard(params: {
   apyPct: number;
   gasBudgetFormatted: string;
   positionSummary?: string;
+  suppliedBalanceDisplay?: string;
+  userPhrase?: string;
 }): AssistantProposalCard {
   const apyStr = `${params.apyPct.toFixed(2)}%`;
   return {
-    title: "Navi withdraw",
+    title: "Withdraw from Navi",
     label: `${params.amountDisplay} ${params.assetSymbol}`,
     source: { type: "package", name: "NAVI PROTOCOL" },
     flows: [
@@ -65,9 +76,13 @@ export function buildNaviWithdrawProposalCard(params: {
       { direction: "out", amount: "—", token: params.assetSymbol, kind: "object", objectName: "Navi position" },
     ],
     details: [
-      { k: "Action", v: "Navi Withdraw" },
+      { k: "Action", v: "Withdraw from Navi" },
+      ...(params.userPhrase ? [{ k: "Requested as", v: params.userPhrase } as const] : []),
       { k: "Asset", v: params.assetSymbol },
       { k: "Amount", v: `${params.amountDisplay} ${params.assetSymbol}` },
+      ...(params.suppliedBalanceDisplay
+        ? [{ k: "Supplied balance", v: `${params.suppliedBalanceDisplay} ${params.assetSymbol}` } as const]
+        : []),
       { k: "Protocol", v: "Navi" },
       { k: "Supply APY (position)", v: apyStr },
       { k: "Network", v: params.networkLabel },

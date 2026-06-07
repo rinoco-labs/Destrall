@@ -3,8 +3,6 @@ import {
   PREPARE_SEND_ACTION_NAME,
   PREPARE_SWAP_ACTION_NAME,
   LIST_YIELD_POOLS_ACTION_NAME,
-  GET_YIELD_POSITIONS_ACTION_NAME,
-  PREPARE_YIELD_DEPOSIT_ACTION_NAME,
   PREPARE_YIELD_WITHDRAW_ACTION_NAME,
   PREPARE_REBALANCE_ACTION_NAME,
   CREATE_TRIGGER_ACTION_NAME,
@@ -21,6 +19,8 @@ import {
 import { hasScheduleIntent } from "../packages/core/triggers/scheduledTriggerParser";
 import { parseRebalanceTargets } from "../packages/core/rebalance/rebalancePlanner";
 import { isYieldPositionsQuestion } from "./yieldPositionIntent";
+import { logNaviIntentRouting } from "./naviIntentVocabulary";
+import { resolveNaviAssistantRoute, type NaviAssistantRoute } from "./naviAssistantRoute";
 
 export type RoutedAssistantToolCall = {
   namespacedName: string;
@@ -73,6 +73,22 @@ export function classifySwapUserMessage(text: string): SwapUserMessageClass {
   return "incomplete";
 }
 
+function logRoute(userText: string, routed: RoutedAssistantToolCall, category: NaviAssistantRoute["category"]): void {
+  if (!category) return;
+  const token =
+    typeof routed.input.asset === "string"
+      ? routed.input.asset
+      : typeof routed.input.spendSymbol === "string"
+        ? routed.input.spendSymbol
+        : undefined;
+  logNaviIntentRouting({
+    rawText: userText,
+    category,
+    routedAction: routed.namespacedName,
+    tokenSymbol: token,
+  });
+}
+
 /**
  * Deterministic planner: maps natural phrasing → package tool args.
  * When no pattern matches, returns null (caller may still run the LLM with tool schemas only).
@@ -89,12 +105,12 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
   }
 
   if (isYieldPositionsQuestion(lower)) {
-    const input: Record<string, unknown> = {};
-    const asset = text.match(/\b(?:for|only|in)\s+(\w{2,10})\b/i)?.[1];
-    if (asset && !/^(the|a|an|me|my|all|on|in|savings?|yield|navi)$/i.test(asset)) {
-      input.asset = asset.toUpperCase() === "SUI" ? "SUI" : asset;
+    const naviRoute = resolveNaviAssistantRoute(text);
+    if (naviRoute?.category === "positions") {
+      const routed = { namespacedName: naviRoute.namespacedName, input: naviRoute.input };
+      logRoute(text, routed, naviRoute.category);
+      return routed;
     }
-    return { namespacedName: GET_YIELD_POSITIONS_ACTION_NAME, input };
   }
 
   if (isTriggerManagementCommand(text)) {
@@ -201,78 +217,26 @@ export function tryRouteAssistantToolCall(userText: string): RoutedAssistantTool
     return { namespacedName: LIST_YIELD_POOLS_ACTION_NAME, input };
   }
 
-  /** Navi / yield pool discovery (must stay ahead of generic “navi” fallback). */
-  const asksYieldPools =
-    /\b(what\s+yield\s+pools|yield\s+pools\s+available|available\s+yield\s+pools|available\s+yield\s+options?|what\s+are\s+the\s+available\s+yield|what\s+yield\s+(?:options?|pools|opportunities)\s+(?:are\s+)?(?:available|on\s+navi)|what\s+yield\s+is\s+available|show\s+(?:me\s+)?(?:available\s+)?yield|list\s+(?:me\s+)?(?:available\s+)?yield|yield\s+options?\s+on\s+navi|yield\s+on\s+navi|show\s+(?:me\s+)?(?:the\s+)?navi\s+pools?|navi\s+pools?|navi\s+yield|yield\s+from\s+navi|navi\s+(?:lending|lend|supply|apy)|what\s+apys?\s+(?:on\s+)?navi|what\s+pools?\s+(?:on\s+)?navi|what\s+apy\s+can\s+i\s+get|apy\s+can\s+i\s+get|how\s+much\s+apy|navi\s+protocol\s+yield)\b/i.test(
-      lower,
-    ) ||
-    (/\bnavi\b/i.test(lower) &&
-      /\b(yield|pool|pools|apy|lend|lending|supply|deposit\s+rate|savings|earn)\b/i.test(lower) &&
-      !/\b(?:my\s+)?(?:positions?|postions|holding|holdings|balance\s+in|supplied|withdraw|take\s+out)\b/i.test(lower));
-
-  if (asksYieldPools) {
-    const input: Record<string, unknown> = {};
-    const asset = text.match(/\b(?:for|on|about)\s+(\w{2,10})\s*(?:pool|yield|navi)?\b/i)?.[1];
-    if (asset && !/^(the|a|an|me|my|all|any|some)$/i.test(asset)) {
-      input.asset = asset.toUpperCase() === "SUI" ? "SUI" : asset;
-    }
-    if (/\b(sort|order)\b.*\b(tvl|size|liquidity)\b/i.test(lower)) input.sortBy = "tvl";
-    else if (/\b(sort|order)\b.*\b(risk|safe|conservative)\b/i.test(lower)) input.sortBy = "risk";
-    else if (/\b(sort|order)\b.*\bapy\b/i.test(lower)) input.sortBy = "apy";
-    return { namespacedName: LIST_YIELD_POOLS_ACTION_NAME, input };
-  }
-
-  const depPct = text.match(
-    /\b(?:deposit|put|supply)\s+([\d.]+%)\s+of\s+my\s+(\w+)\s+(?:into|to|in)\s+navi\b/i,
-  );
-  if (depPct) {
-    const [, pct, tok] = depPct;
-    return {
-      namespacedName: PREPARE_YIELD_DEPOSIT_ACTION_NAME,
-      input: { asset: tok, amount: pct, amountKind: "percentage" },
-    };
-  }
-
-  const depAmt = text.match(
-    /\b(?:deposit|put|supply)\s+([\d.,]+)\s+(\w+)\s+(?:into|to|in)\s+navi\b/i,
-  );
-  if (depAmt) {
-    const [, amt, tok] = depAmt;
-    return {
-      namespacedName: PREPARE_YIELD_DEPOSIT_ACTION_NAME,
-      input: { asset: tok, amount: amt, amountKind: "absolute" },
-    };
-  }
-
-  const wdAll = text.match(/\bwithdraw\s+all\s+(?:my\s+)?(\w+)\s+(?:from|out\s+of)\s+navi\b/i);
-  if (wdAll) {
-    const [, tok] = wdAll;
-    return {
-      namespacedName: PREPARE_YIELD_WITHDRAW_ACTION_NAME,
-      input: { asset: tok, amountKind: "all" },
-    };
-  }
-
   const wdInterest = /\bwithdraw\s+(?:my\s+)?interest\b/i.test(lower);
   if (wdInterest) {
-    const m = text.match(/\b(?:from|on|for)\s+(\w+)\s+navi\b/i);
+    const m = text.match(/\b(?:from|on|for)\s+(\w+)\s+(?:navi|yield|savings?)\b/i);
     const tok = m?.[1];
     if (!tok) {
       return null;
     }
-    return {
+    const routed = {
       namespacedName: PREPARE_YIELD_WITHDRAW_ACTION_NAME,
       input: { asset: tok, amountKind: "interest" },
     };
+    logRoute(text, routed, "withdraw");
+    return routed;
   }
 
-  const wdAmt = text.match(/\bwithdraw\s+([\d.,]+)\s+(\w+)\s+(?:from|out\s+of)\s+navi\b/i);
-  if (wdAmt) {
-    const [, amt, tok] = wdAmt;
-    return {
-      namespacedName: PREPARE_YIELD_WITHDRAW_ACTION_NAME,
-      input: { asset: tok, amount: amt, amountKind: "absolute" },
-    };
+  const naviRoute = resolveNaviAssistantRoute(text);
+  if (naviRoute && naviRoute.category !== "positions") {
+    const routed = { namespacedName: naviRoute.namespacedName, input: naviRoute.input };
+    logRoute(text, routed, naviRoute.category);
+    return routed;
   }
 
   return null;
